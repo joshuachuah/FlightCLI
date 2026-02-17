@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/xjosh/flightcli/internal/models"
 )
@@ -27,8 +28,12 @@ type aviationStackFlight struct {
 }
 
 type aviationStackAirport struct {
-	Airport string `json:"airport"`
-	IATA    string `json:"iata"`
+	Airport   string `json:"airport"`
+	IATA      string `json:"iata"`
+	Timezone  string `json:"timezone"`
+	Scheduled string `json:"scheduled"`
+	Estimated string `json:"estimated"`
+	Actual    string `json:"actual"`
 }
 
 type aviationStackAirline struct {
@@ -72,14 +77,21 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 		return nil, fmt.Errorf("no flight found for %s", flightIATA)
 	}
 
-	f := data.Data[0]
+	f := bestFlight(data.Data)
+
+	status := f.FlightStatus
+	if status == "scheduled" && f.Live != nil {
+		status = "active"
+	}
 
 	flight := &models.Flight{
-		FlightNumber: flightIATA,
-		Airline:      f.Airline.Name,
-		Departure:    f.Departure.IATA,
-		Arrival:      f.Arrival.IATA,
-		Status:       formatStatus(f.FlightStatus),
+		FlightNumber:  flightIATA,
+		Airline:       f.Airline.Name,
+		Departure:     f.Departure.IATA,
+		Arrival:       f.Arrival.IATA,
+		Status:        formatStatus(status),
+		DepartureTime: parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled),
+		ArrivalTime:   parseLocalTime(f.Arrival.Timezone, f.Arrival.Actual, f.Arrival.Estimated, f.Arrival.Scheduled),
 	}
 
 	if f.Live != nil {
@@ -90,6 +102,35 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 	}
 
 	return flight, nil
+}
+
+// getting departures and arrivals from that airport
+// func (a* AviationStackProvider) GetAirport(airportName string) {
+
+// 	flightIATA := normalizeFlightNumber(strings.ToUpper(strings.TrimSpace(flightNumber)))
+
+// 	url := fmt.Sprintf("http://api.aviationstack.com/v1/airports?access_key=%s&flight_iata=%s", a.APIKey, flightIATA)
+
+// 	flightSchedule := fmt.Sprintf("http://api.aviationstack.com/v1/timetable?access_key=%s&flight_iata=%s", a.APIKey, flightIATA)
+
+
+// }
+
+// bestFlight picks the most relevant flight from multiple results.
+// Prefers active > landed > scheduled, so we don't show a future
+// scheduled flight when the current one is still in the air.
+func bestFlight(flights []aviationStackFlight) aviationStackFlight {
+	priority := map[string]int{"active": 0, "landed": 1, "incident": 2, "diverted": 2, "scheduled": 3, "cancelled": 4}
+	best := flights[0]
+	bestPri := priority[best.FlightStatus]
+	for _, f := range flights[1:] {
+		p := priority[f.FlightStatus]
+		if p < bestPri {
+			best = f
+			bestPri = p
+		}
+	}
+	return best
 }
 
 // normalizeFlightNumber strips leading zeros from the numeric part.
@@ -107,6 +148,28 @@ func normalizeFlightNumber(input string) string {
 		num = "0"
 	}
 	return input[:i] + num
+}
+
+// parseLocalTime re-interprets AviationStack timestamps in the correct timezone.
+// AviationStack returns local times with a fake +00:00 offset, so we strip the
+// offset and re-parse using the provided IANA timezone (e.g. "America/Chicago").
+func parseLocalTime(tz string, values ...string) time.Time {
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.UTC
+	}
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		// Parse ignoring the fake offset, then interpret in the real timezone
+		t, err := time.Parse("2006-01-02T15:04:05+00:00", v)
+		if err != nil {
+			continue
+		}
+		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, loc)
+	}
+	return time.Time{}
 }
 
 func formatStatus(status string) string {

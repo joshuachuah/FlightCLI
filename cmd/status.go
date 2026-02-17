@@ -7,7 +7,9 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"os"
+	"time"
 
 	"github.com/xjosh/flightcli/internal/provider"
 	"github.com/xjosh/flightcli/internal/service"
@@ -42,6 +44,18 @@ var statusCmd = &cobra.Command{
 		fmt.Printf("Airline: %s\n", flight.Airline)
 		fmt.Printf("Route: %s → %s\n", flight.Departure, flight.Arrival)
 		fmt.Printf("Status: %s\n", flight.Status)
+
+		if !flight.DepartureTime.IsZero() && !flight.ArrivalTime.IsZero() {
+			totalDuration := flight.ArrivalTime.Sub(flight.DepartureTime)
+			fmt.Printf("Flight Time: %s\n", formatDuration(totalDuration))
+
+			now := time.Now().UTC()
+			if now.Before(flight.ArrivalTime) && now.After(flight.DepartureTime) {
+				remaining := flight.ArrivalTime.Sub(now)
+				fmt.Printf("Time Remaining: %s\n", formatDuration(remaining))
+			}
+		}
+
 		if flight.Latitude != 0 || flight.Longitude != 0 {
 			fmt.Printf("Location: %.4f, %.4f\n", flight.Latitude, flight.Longitude)
 			fmt.Printf("Altitude: %.0f ft\n", flight.Altitude)
@@ -49,6 +63,15 @@ var statusCmd = &cobra.Command{
 		}
 	},
 
+}
+
+func formatDuration(d time.Duration) string {
+	h := int(math.Floor(d.Hours()))
+	m := int(d.Minutes()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	return fmt.Sprintf("%dm", m)
 }
 
 func init() {
