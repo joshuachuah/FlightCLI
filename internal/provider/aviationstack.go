@@ -104,17 +104,56 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 	return flight, nil
 }
 
-// getting departures and arrivals from that airport
-// func (a* AviationStackProvider) GetAirport(airportName string) {
+func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+	code := strings.ToUpper(strings.TrimSpace(airportCode))
 
-// 	flightIATA := normalizeFlightNumber(strings.ToUpper(strings.TrimSpace(flightNumber)))
+	param := "dep_iata"
+	if flightType == "arrivals" {
+		param = "arr_iata"
+	}
 
-// 	url := fmt.Sprintf("http://api.aviationstack.com/v1/airports?access_key=%s&flight_iata=%s", a.APIKey, flightIATA)
+	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&%s=%s", a.APIKey, param, code)
 
-// 	flightSchedule := fmt.Sprintf("http://api.aviationstack.com/v1/timetable?access_key=%s&flight_iata=%s", a.APIKey, flightIATA)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
+	}
+	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("AviationStack API returned status %d", resp.StatusCode)
+	}
 
-// }
+	var data aviationStackResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(data.Data) == 0 {
+		return nil, fmt.Errorf("no flights found for airport %s", code)
+	}
+
+	var flights []models.AirportFlight
+	for _, f := range data.Data {
+		scheduled := f.Departure.Scheduled
+		tz := f.Departure.Timezone
+		if flightType == "arrivals" {
+			scheduled = f.Arrival.Scheduled
+			tz = f.Arrival.Timezone
+		}
+
+		flights = append(flights, models.AirportFlight{
+			FlightNumber:  f.Flight.IATA,
+			Airline:       f.Airline.Name,
+			Origin:        f.Departure.IATA,
+			Destination:   f.Arrival.IATA,
+			Status:        formatStatus(f.FlightStatus),
+			ScheduledTime: parseLocalTime(tz, scheduled),
+		})
+	}
+
+	return flights, nil
+}
 
 // bestFlight picks the most relevant flight from multiple results.
 // Prefers active > landed > scheduled, so we don't show a future

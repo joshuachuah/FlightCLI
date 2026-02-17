@@ -12,3 +12,7 @@ type FlightService struct {
 func (s *FlightService) GetStatus(flightNumber string) (*models.Flight, error) {
 	return s.Provider.GetFlightStatus(flightNumber)
 }
+
+func (s *FlightService) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+	return s.Provider.GetAirportFlights(airportCode, flightType)
+}

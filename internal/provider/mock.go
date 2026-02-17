@@ -15,3 +15,15 @@ func (m *MockProvider) GetFlightStatus(flightNumber string) (*models.Flight, err
 		Speed:        510,
 	}, nil
 }
+
+func (m *MockProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+	return []models.AirportFlight{
+		{
+			FlightNumber: "DL123",
+			Airline:      "Delta Airlines",
+			Origin:       "JFK",
+			Destination:  "LAX",
+			Status:       "Scheduled",
+		},
+	}, nil
+}
