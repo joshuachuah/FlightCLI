@@ -1,4 +1,4 @@
-# flightcli
+# FlightCLI
 
 A command-line tool to track live flights and view airport departures/arrivals, powered by the [AviationStack API](https://aviationstack.com/).
 
