@@ -155,6 +155,45 @@ func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType
 	return flights, nil
 }
 
+func (a *AviationStackProvider) SearchFlights(from, to string) ([]models.AirportFlight, error) {
+	from = strings.ToUpper(strings.TrimSpace(from))
+	to = strings.ToUpper(strings.TrimSpace(to))
+
+	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&dep_iata=%s&arr_iata=%s", a.APIKey, from, to)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("AviationStack API returned status %d", resp.StatusCode)
+	}
+
+	var data aviationStackResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(data.Data) == 0 {
+		return nil, fmt.Errorf("no flights found for route %s → %s", from, to)
+	}
+
+	var flights []models.AirportFlight
+	for _, f := range data.Data {
+		flights = append(flights, models.AirportFlight{
+			FlightNumber:  f.Flight.IATA,
+			Airline:       f.Airline.Name,
+			Origin:        f.Departure.IATA,
+			Destination:   f.Arrival.IATA,
+			Status:        formatStatus(f.FlightStatus),
+			ScheduledTime: parseLocalTime(f.Departure.Timezone, f.Departure.Scheduled),
+		})
+	}
+	return flights, nil
+}
+
 // bestFlight picks the most relevant flight from multiple results.
 // Prefers active > landed > scheduled, so we don't show a future
 // scheduled flight when the current one is still in the air.

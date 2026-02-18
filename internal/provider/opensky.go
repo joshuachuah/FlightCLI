@@ -55,6 +55,14 @@ func (o *OpenSkyProvider) GetFlightStatus(flightNumber string) (*models.Flight, 
 	return flight, nil
 }
 
+func (o *OpenSkyProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+	return nil, fmt.Errorf("GetAirportFlights is not supported by the OpenSky provider")
+}
+
+func (o *OpenSkyProvider) SearchFlights(from, to string) ([]models.AirportFlight, error) {
+	return nil, fmt.Errorf("SearchFlights is not supported by the OpenSky provider")
+}
+
 func deriveStatus(state []interface{}) string {
 	if len(state) > 8 {
 		if onGround, ok := state[8].(bool); ok && onGround {
