@@ -29,6 +29,10 @@ var trackCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "Use 'flightcli status --json' for a one-time JSON snapshot.")
 			os.Exit(1)
 		}
+		if trackInterval <= 0 {
+			fmt.Fprintln(os.Stderr, "Error: --interval must be greater than 0 seconds.")
+			os.Exit(1)
+		}
 
 		apiKey := os.Getenv("AVIATIONSTACK_API_KEY")
 		if apiKey == "" {

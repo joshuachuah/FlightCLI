@@ -19,7 +19,7 @@ type aviationStackResponse struct {
 }
 
 type aviationStackFlight struct {
-	FlightStatus string              `json:"flight_status"`
+	FlightStatus string               `json:"flight_status"`
 	Departure    aviationStackAirport `json:"departure"`
 	Arrival      aviationStackAirport `json:"arrival"`
 	Airline      aviationStackAirline `json:"airline"`
@@ -58,7 +58,7 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 
 	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&flight_iata=%s", a.APIKey, flightIATA)
 
-	resp, err := http.Get(url)
+	resp, err := providerHTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
 	}
@@ -97,7 +97,7 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 	if f.Live != nil {
 		flight.Latitude = f.Live.Latitude
 		flight.Longitude = f.Live.Longitude
-		flight.Altitude = f.Live.Altitude * 3.28084   // meters to feet
+		flight.Altitude = f.Live.Altitude * 3.28084      // meters to feet
 		flight.Speed = f.Live.SpeedHorizontal * 0.621371 // km/h to mph
 	}
 
@@ -106,15 +106,18 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 
 func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
 	code := strings.ToUpper(strings.TrimSpace(airportCode))
+	flightType = strings.ToLower(strings.TrimSpace(flightType))
 
 	param := "dep_iata"
 	if flightType == "arrivals" {
 		param = "arr_iata"
+	} else if flightType != "departures" {
+		return nil, fmt.Errorf("invalid flight type %q: must be 'departures' or 'arrivals'", flightType)
 	}
 
 	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&%s=%s", a.APIKey, param, code)
 
-	resp, err := http.Get(url)
+	resp, err := providerHTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
 	}
@@ -161,7 +164,7 @@ func (a *AviationStackProvider) SearchFlights(from, to string) ([]models.Airport
 
 	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&dep_iata=%s&arr_iata=%s", a.APIKey, from, to)
 
-	resp, err := http.Get(url)
+	resp, err := providerHTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
 	}
@@ -198,17 +201,33 @@ func (a *AviationStackProvider) SearchFlights(from, to string) ([]models.Airport
 // Prefers active > landed > scheduled, so we don't show a future
 // scheduled flight when the current one is still in the air.
 func bestFlight(flights []aviationStackFlight) aviationStackFlight {
-	priority := map[string]int{"active": 0, "landed": 1, "incident": 2, "diverted": 2, "scheduled": 3, "cancelled": 4}
 	best := flights[0]
-	bestPri := priority[best.FlightStatus]
+	bestPri := flightPriority(best.FlightStatus)
 	for _, f := range flights[1:] {
-		p := priority[f.FlightStatus]
+		p := flightPriority(f.FlightStatus)
 		if p < bestPri {
 			best = f
 			bestPri = p
 		}
 	}
 	return best
+}
+
+func flightPriority(status string) int {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active":
+		return 0
+	case "landed":
+		return 1
+	case "incident", "diverted":
+		return 2
+	case "scheduled":
+		return 3
+	case "cancelled":
+		return 4
+	default:
+		return 99
+	}
 }
 
 // normalizeFlightNumber strips leading zeros from the numeric part.

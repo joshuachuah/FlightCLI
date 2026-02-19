@@ -21,7 +21,7 @@ func (o *OpenSkyProvider) GetFlightStatus(flightNumber string) (*models.Flight, 
 
 	url := fmt.Sprintf("https://opensky-network.org/api/states/all?callsign=%s", callsign)
 
-	resp, err := http.Get(url)
+	resp, err := providerHTTPClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach OpenSky API: %w", err)
 	}

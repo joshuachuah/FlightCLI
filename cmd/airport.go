@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/xjosh/flightcli/internal/cache"
@@ -29,6 +30,11 @@ var airportCmd = &cobra.Command{
 
 		airportCode := args[0]
 		flightType, _ := cmd.Flags().GetString("type")
+		flightType = strings.ToLower(strings.TrimSpace(flightType))
+		if flightType != "departures" && flightType != "arrivals" {
+			fmt.Fprintf(os.Stderr, "Error: invalid --type %q. Use 'departures' or 'arrivals'.\n", flightType)
+			os.Exit(1)
+		}
 
 		c, _ := cache.New()
 		p := &provider.AviationStackProvider{APIKey: apiKey}
