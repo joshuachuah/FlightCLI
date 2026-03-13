@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/xjosh/flightcli/internal/cache"
@@ -27,6 +28,10 @@ type FlightService struct {
 // GetStatus fetches live flight status, using cache when available.
 // Returns (flight, cached, error) - cached is true if the result came from cache.
 func (s *FlightService) GetStatus(ctx context.Context, flightNumber string) (*models.Flight, bool, error) {
+	flightNumber = strings.TrimSpace(flightNumber)
+	if flightNumber == "" {
+		return nil, false, fmt.Errorf("flight number is required")
+	}
 	key := fmt.Sprintf("status:%s", flightNumber)
 
 	if s.Cache != nil {
@@ -57,6 +62,10 @@ func (s *FlightService) GetStatus(ctx context.Context, flightNumber string) (*mo
 // GetAirportFlights fetches airport departure/arrival data, using cache when available.
 // Returns (flights, cached, error).
 func (s *FlightService) GetAirportFlights(ctx context.Context, airportCode, flightType string) ([]models.AirportFlight, bool, error) {
+	airportCode = strings.TrimSpace(airportCode)
+	if airportCode == "" {
+		return nil, false, fmt.Errorf("airport code is required")
+	}
 	key := fmt.Sprintf("airport:%s:%s", airportCode, flightType)
 
 	if s.Cache != nil {
@@ -87,6 +96,11 @@ func (s *FlightService) GetAirportFlights(ctx context.Context, airportCode, flig
 // SearchFlights searches flights between two airports, using cache when available.
 // Returns (flights, cached, error).
 func (s *FlightService) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, bool, error) {
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+	if from == "" || to == "" {
+		return nil, false, fmt.Errorf("both origin and destination airport codes are required")
+	}
 	key := fmt.Sprintf("search:%s:%s", from, to)
 
 	if s.Cache != nil {
