@@ -62,7 +62,7 @@ func (s *FlightService) GetStatus(ctx context.Context, flightNumber string) (*mo
 // GetAirportFlights fetches airport departure/arrival data, using cache when available.
 // Returns (flights, cached, error).
 func (s *FlightService) GetAirportFlights(ctx context.Context, airportCode, flightType string) ([]models.AirportFlight, bool, error) {
-	airportCode = strings.TrimSpace(airportCode)
+	airportCode = strings.ToUpper(strings.TrimSpace(airportCode))
 	if airportCode == "" {
 		return nil, false, fmt.Errorf("airport code is required")
 	}
@@ -96,8 +96,8 @@ func (s *FlightService) GetAirportFlights(ctx context.Context, airportCode, flig
 // SearchFlights searches flights between two airports, using cache when available.
 // Returns (flights, cached, error).
 func (s *FlightService) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, bool, error) {
-	from = strings.TrimSpace(from)
-	to = strings.TrimSpace(to)
+	from = strings.ToUpper(strings.TrimSpace(from))
+	to = strings.ToUpper(strings.TrimSpace(to))
 	if from == "" || to == "" {
 		return nil, false, fmt.Errorf("both origin and destination airport codes are required")
 	}
