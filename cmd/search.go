@@ -1,18 +1,13 @@
 /*
-Copyright © 2026 Joshua Chuah <jchuah07@gmail.com>
+Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 */
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/xjosh/flightcli/internal/cache"
 	"github.com/xjosh/flightcli/internal/display"
-	"github.com/xjosh/flightcli/internal/provider"
-	"github.com/xjosh/flightcli/internal/service"
 )
 
 var (
@@ -25,37 +20,25 @@ var searchCmd = &cobra.Command{
 	Short: "Search flights between two airports",
 	Long:  `Search for current flights on a specific route using IATA airport codes.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		apiKey := os.Getenv("AVIATIONSTACK_API_KEY")
-		if apiKey == "" {
-			printAPIKeyError()
-			os.Exit(1)
-		}
+		from := normalizeAirportCode(searchFrom, "--from")
+		to := normalizeAirportCode(searchTo, "--to")
+		svc := newFlightService(requireAPIKey(), true)
 
-		c, _ := cache.New()
-		p := &provider.AviationStackProvider{APIKey: apiKey}
-		svc := service.FlightService{Provider: p, Cache: c}
-
-		s := display.NewSpinner(fmt.Sprintf("Searching flights from %s to %s...", searchFrom, searchTo))
+		s := display.NewSpinner(fmt.Sprintf("Searching flights from %s to %s...", from, to))
 		s.Start()
-		flights, cached, err := svc.SearchFlights(searchFrom, searchTo)
+		flights, cached, err := svc.SearchFlights(cmd.Context(), from, to)
 		s.Stop()
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error searching flights from %s to %s: %v\n", searchFrom, searchTo, err)
-			os.Exit(1)
+			cobra.CheckErr(fmt.Errorf("searching flights from %s to %s: %w", from, to, err))
 		}
 
 		if jsonOutput {
-			out, err := json.MarshalIndent(flights, "", "  ")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-				os.Exit(1)
-			}
-			fmt.Println(string(out))
+			cobra.CheckErr(printJSONOutput(flights))
 			return
 		}
 
-		display.PrintSearchResults(flights, searchFrom, searchTo)
+		display.PrintSearchResults(flights, from, to)
 		if cached {
 			display.PrintCachedIndicator()
 		}
