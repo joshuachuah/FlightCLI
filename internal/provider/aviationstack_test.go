@@ -17,8 +17,11 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+var providerHTTPClientMu sync.Mutex
+
 func withTestHTTPClient(t *testing.T, assert func(*http.Request), handler http.HandlerFunc) {
 	t.Helper()
+	providerHTTPClientMu.lock()
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -40,11 +43,13 @@ func withTestHTTPClient(t *testing.T, assert func(*http.Request), handler http.H
 	}
 	t.Cleanup(func() {
 		providerHTTPClient = originalClient
+		providerHTTPClientMu.Unlock()
 	})
 }
 
 func TestFetchFlightsUsesHTTPSAndEncodesQuery(t *testing.T) {
 	provider := &AviationStackProvider{APIKey: "secret-key"}
+	providerHTTPClientMu.Lock()
 
 	withTestHTTPClient(t, func(req *http.Request) {
 		if req.URL.Scheme != "https" {
@@ -100,6 +105,7 @@ func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		providerHTTPClient = originalClient
+		providerHTTPClientMu.Unlock()
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

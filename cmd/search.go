@@ -34,7 +34,7 @@ var searchCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			printJSONOutput(flights)
+			cobra.CheckErr(printJSONOutput(flights))
 			return
 		}
 

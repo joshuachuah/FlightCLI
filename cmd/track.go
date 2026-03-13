@@ -38,9 +38,11 @@ var trackCmd = &cobra.Command{
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
+		stopTracking := func() { fmt.Println("Stopped tracking.") }
+
 		for {
-			if err := ctx.Err(); err != nil {
-				fmt.Println("Stopped tracking.")
+			if ctx.Err() != nil {
+				stopTracking()
 				return
 			}
 
@@ -54,7 +56,7 @@ var trackCmd = &cobra.Command{
 			fmt.Print("\r\033[K")
 			if err != nil {
 				if ctx.Err() != nil {
-					fmt.Println("Stopped tracking.")
+					stopTracking()
 					return
 				}
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -67,7 +69,7 @@ var trackCmd = &cobra.Command{
 
 			select {
 			case <-ctx.Done():
-				fmt.Println("Stopped tracking.")
+				stopTracking()
 				return
 			case <-ticker.C:
 			}

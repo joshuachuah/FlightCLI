@@ -56,13 +56,13 @@ func newFlightService(apiKey string, useCache bool) service.FlightService {
 	}
 }
 
-func printJSONOutput(v interface{}) {
+func printJSONOutput(v interface{}) error {
 	out, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("encoding JSON output: %w", err)
 	}
 	fmt.Println(string(out))
+	return nil
 }
 
 func normalizeAirportCode(input, fieldName string) string {
