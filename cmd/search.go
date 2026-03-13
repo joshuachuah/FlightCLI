@@ -26,7 +26,7 @@ var searchCmd = &cobra.Command{
 
 		s := display.NewSpinner(fmt.Sprintf("Searching flights from %s to %s...", from, to))
 		s.Start()
-		flights, cached, err := svc.SearchFlights(from, to)
+		flights, cached, err := svc.SearchFlights(cmd.Context(), from, to)
 		s.Stop()
 
 		if err != nil {

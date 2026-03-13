@@ -21,7 +21,7 @@ var statusCmd = &cobra.Command{
 
 		s := display.NewSpinner(fmt.Sprintf("Fetching status for %s...", flightNumber))
 		s.Start()
-		flight, cached, err := svc.GetStatus(flightNumber)
+		flight, cached, err := svc.GetStatus(cmd.Context(), flightNumber)
 		s.Stop()
 
 		if err != nil {

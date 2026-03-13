@@ -28,7 +28,7 @@ var airportCmd = &cobra.Command{
 
 		s := display.NewSpinner(fmt.Sprintf("Fetching %s for %s...", flightType, airportCode))
 		s.Start()
-		flights, cached, err := svc.GetAirportFlights(airportCode, flightType)
+		flights, cached, err := svc.GetAirportFlights(cmd.Context(), airportCode, flightType)
 		s.Stop()
 
 		if err != nil {

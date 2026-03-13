@@ -4,7 +4,6 @@ Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -33,22 +32,31 @@ var trackCmd = &cobra.Command{
 		flightNumber := args[0]
 		interval := time.Duration(trackInterval) * time.Second
 		svc := newFlightService(requireAPIKey(), false)
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		for {
+			if err := ctx.Err(); err != nil {
+				fmt.Println("Stopped tracking.")
+				return
+			}
+
 			fmt.Print("\033[2J\033[H")
 
 			s := display.NewSpinner(fmt.Sprintf("Fetching status for %s...", flightNumber))
 			s.Start()
-			flight, _, err := svc.GetStatus(flightNumber)
+			flight, _, err := svc.GetStatus(ctx, flightNumber)
 			s.Stop()
 
 			fmt.Print("\r\033[K")
 			if err != nil {
+				if ctx.Err() != nil {
+					fmt.Println("Stopped tracking.")
+					return
+				}
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			} else {
 				display.PrintFlightStatus(flight)

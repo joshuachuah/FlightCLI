@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -56,9 +57,9 @@ type aviationStackLive struct {
 	IsGround        bool    `json:"is_ground"`
 }
 
-func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Flight, error) {
+func (a *AviationStackProvider) GetFlightStatus(ctx context.Context, flightNumber string) (*models.Flight, error) {
 	flightIATA := normalizeFlightNumber(strings.ToUpper(strings.TrimSpace(flightNumber)))
-	data, err := a.fetchFlights(url.Values{"flight_iata": []string{flightIATA}})
+	data, err := a.fetchFlights(ctx, url.Values{"flight_iata": []string{flightIATA}})
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +93,7 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 	return flight, nil
 }
 
-func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+func (a *AviationStackProvider) GetAirportFlights(ctx context.Context, airportCode string, flightType string) ([]models.AirportFlight, error) {
 	code := strings.ToUpper(strings.TrimSpace(airportCode))
 	flightType = strings.ToLower(strings.TrimSpace(flightType))
 
@@ -103,7 +104,7 @@ func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType
 		return nil, fmt.Errorf("invalid flight type %q: must be 'departures' or 'arrivals'", flightType)
 	}
 
-	data, err := a.fetchFlights(url.Values{param: []string{code}})
+	data, err := a.fetchFlights(ctx, url.Values{param: []string{code}})
 	if err != nil {
 		return nil, err
 	}
@@ -125,11 +126,11 @@ func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType
 	return flights, nil
 }
 
-func (a *AviationStackProvider) SearchFlights(from, to string) ([]models.AirportFlight, error) {
+func (a *AviationStackProvider) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, error) {
 	from = strings.ToUpper(strings.TrimSpace(from))
 	to = strings.ToUpper(strings.TrimSpace(to))
 
-	data, err := a.fetchFlights(url.Values{
+	data, err := a.fetchFlights(ctx, url.Values{
 		"dep_iata": []string{from},
 		"arr_iata": []string{to},
 	})
@@ -147,7 +148,7 @@ func (a *AviationStackProvider) SearchFlights(from, to string) ([]models.Airport
 	return flights, nil
 }
 
-func (a *AviationStackProvider) fetchFlights(params url.Values) ([]aviationStackFlight, error) {
+func (a *AviationStackProvider) fetchFlights(ctx context.Context, params url.Values) ([]aviationStackFlight, error) {
 	endpoint, err := url.Parse(aviationStackEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("invalid AviationStack endpoint: %w", err)
@@ -162,7 +163,7 @@ func (a *AviationStackProvider) fetchFlights(params url.Values) ([]aviationStack
 	query.Set("access_key", a.APIKey)
 	endpoint.RawQuery = query.Encode()
 
-	req, err := http.NewRequest(http.MethodGet, endpoint.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("building AviationStack request: %w", err)
 	}

@@ -1,11 +1,14 @@
 package provider
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -60,7 +63,7 @@ func TestFetchFlightsUsesHTTPSAndEncodesQuery(t *testing.T) {
 		fmt.Fprint(w, `{"data":[]}`)
 	})
 
-	if _, err := provider.fetchFlights(url.Values{"flight_iata": []string{"AA100&admin=true"}}); err != nil {
+	if _, err := provider.fetchFlights(context.Background(), url.Values{"flight_iata": []string{"AA100&admin=true"}}); err != nil {
 		t.Fatalf("fetchFlights returned error: %v", err)
 	}
 }
@@ -76,11 +79,37 @@ func TestGetFlightStatusNormalizesFlightNumber(t *testing.T) {
 		fmt.Fprint(w, `{"data":[{"flight_status":"active","departure":{"iata":"ICN","timezone":"Asia/Seoul","scheduled":"2026-03-13T10:00:00+00:00"},"arrival":{"iata":"JFK","timezone":"America/New_York","scheduled":"2026-03-13T20:00:00+00:00"},"airline":{"name":"Korean Air"},"flight":{"iata":"KE38"}}]}`)
 	})
 
-	flight, err := provider.GetFlightStatus("KE038")
+	flight, err := provider.GetFlightStatus(context.Background(), "KE038")
 	if err != nil {
 		t.Fatalf("GetFlightStatus returned error: %v", err)
 	}
 	if flight.FlightNumber != "KE38" {
 		t.Fatalf("expected normalized flight number in model, got %q", flight.FlightNumber)
+	}
+}
+
+func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+
+	originalClient := providerHTTPClient
+	providerHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		}),
+	}
+	t.Cleanup(func() {
+		providerHTTPClient = originalClient
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := provider.fetchFlights(ctx, url.Values{"flight_iata": []string{"AA100"}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
 	}
 }
