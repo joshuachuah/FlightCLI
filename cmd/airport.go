@@ -1,19 +1,14 @@
 /*
-Copyright © 2026 Joshua Chuah <jchuah07@gmail.com>
+Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 */
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/xjosh/flightcli/internal/cache"
 	"github.com/xjosh/flightcli/internal/display"
-	"github.com/xjosh/flightcli/internal/provider"
-	"github.com/xjosh/flightcli/internal/service"
 )
 
 var airportCmd = &cobra.Command{
@@ -22,23 +17,14 @@ var airportCmd = &cobra.Command{
 	Long:  `Display departure or arrival flights for a given airport IATA code (e.g. JFK, LAX, ORD).`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		apiKey := os.Getenv("AVIATIONSTACK_API_KEY")
-		if apiKey == "" {
-			printAPIKeyError()
-			os.Exit(1)
-		}
-
-		airportCode := args[0]
+		airportCode := normalizeAirportCode(args[0], "airport code")
 		flightType, _ := cmd.Flags().GetString("type")
 		flightType = strings.ToLower(strings.TrimSpace(flightType))
 		if flightType != "departures" && flightType != "arrivals" {
-			fmt.Fprintf(os.Stderr, "Error: invalid --type %q. Use 'departures' or 'arrivals'.\n", flightType)
-			os.Exit(1)
+			cobra.CheckErr(fmt.Errorf("invalid --type %q: use 'departures' or 'arrivals'", flightType))
 		}
 
-		c, _ := cache.New()
-		p := &provider.AviationStackProvider{APIKey: apiKey}
-		svc := service.FlightService{Provider: p, Cache: c}
+		svc := newFlightService(requireAPIKey(), true)
 
 		s := display.NewSpinner(fmt.Sprintf("Fetching %s for %s...", flightType, airportCode))
 		s.Start()
@@ -46,17 +32,11 @@ var airportCmd = &cobra.Command{
 		s.Stop()
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching %s for %s: %v\n", flightType, airportCode, err)
-			os.Exit(1)
+			cobra.CheckErr(fmt.Errorf("fetching %s for %s: %w", flightType, airportCode, err))
 		}
 
 		if jsonOutput {
-			out, err := json.MarshalIndent(flights, "", "  ")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-				os.Exit(1)
-			}
-			fmt.Println(string(out))
+			printJSONOutput(flights)
 			return
 		}
 
