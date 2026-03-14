@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/xjosh/flightcli/internal/cache"
@@ -25,29 +27,60 @@ type FlightService struct {
 
 // GetStatus fetches live flight status, using cache when available.
 // Returns (flight, cached, error) - cached is true if the result came from cache.
-func (s *FlightService) GetStatus(flightNumber string) (*models.Flight, bool, error) {
-	return getOrFetch(s.Cache, fmt.Sprintf("status:%s", flightNumber), flightStatusTTL, func() (*models.Flight, error) {
-		return s.Provider.GetFlightStatus(flightNumber)
+func (s *FlightService) GetStatus(ctx context.Context, flightNumber string) (*models.Flight, bool, error) {
+	flightNumber = strings.TrimSpace(flightNumber)
+	if flightNumber == "" {
+		return nil, false, fmt.Errorf("flight number is required")
+	}
+
+	return getOrFetch(ctx, s.Cache, fmt.Sprintf("status:%s", flightNumber), flightStatusTTL, func(ctx context.Context) (*models.Flight, error) {
+		return s.Provider.GetFlightStatus(ctx, flightNumber)
 	})
 }
 
 // GetAirportFlights fetches airport departure/arrival data, using cache when available.
 // Returns (flights, cached, error).
-func (s *FlightService) GetAirportFlights(airportCode, flightType string) ([]models.AirportFlight, bool, error) {
-	return getOrFetch(s.Cache, fmt.Sprintf("airport:%s:%s", airportCode, flightType), airportTTL, func() ([]models.AirportFlight, error) {
-		return s.Provider.GetAirportFlights(airportCode, flightType)
+func (s *FlightService) GetAirportFlights(ctx context.Context, airportCode, flightType string) ([]models.AirportFlight, bool, error) {
+	airportCode = strings.TrimSpace(airportCode)
+	flightType = strings.ToLower(strings.TrimSpace(flightType))
+
+	if airportCode == "" {
+		return nil, false, fmt.Errorf("airport code is required")
+	}
+	if flightType == "" {
+		return nil, false, fmt.Errorf("flight type is required")
+	}
+
+	return getOrFetch(ctx, s.Cache, fmt.Sprintf("airport:%s:%s", airportCode, flightType), airportTTL, func(ctx context.Context) ([]models.AirportFlight, error) {
+		return s.Provider.GetAirportFlights(ctx, airportCode, flightType)
 	})
 }
 
 // SearchFlights searches flights between two airports, using cache when available.
 // Returns (flights, cached, error).
-func (s *FlightService) SearchFlights(from, to string) ([]models.AirportFlight, bool, error) {
-	return getOrFetch(s.Cache, fmt.Sprintf("search:%s:%s", from, to), searchTTL, func() ([]models.AirportFlight, error) {
-		return s.Provider.SearchFlights(from, to)
+func (s *FlightService) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, bool, error) {
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
+
+	if from == "" {
+		return nil, false, fmt.Errorf("departure airport is required")
+	}
+	if to == "" {
+		return nil, false, fmt.Errorf("arrival airport is required")
+	}
+
+	return getOrFetch(ctx, s.Cache, fmt.Sprintf("search:%s:%s", from, to), searchTTL, func(ctx context.Context) ([]models.AirportFlight, error) {
+		return s.Provider.SearchFlights(ctx, from, to)
 	})
 }
 
-func getOrFetch[T any](c *cache.Cache, key string, ttl time.Duration, fetch func() (T, error)) (T, bool, error) {
+func getOrFetch[T any](
+	ctx context.Context,
+	c *cache.Cache,
+	key string,
+	ttl time.Duration,
+	fetch func(context.Context) (T, error),
+) (T, bool, error) {
 	var zero T
 
 	if c != nil {
@@ -59,13 +92,17 @@ func getOrFetch[T any](c *cache.Cache, key string, ttl time.Duration, fetch func
 		}
 	}
 
-	value, err := fetch()
+	if err := ctx.Err(); err != nil {
+		return zero, false, err
+	}
+
+	value, err := fetch(ctx)
 	if err != nil {
 		return zero, false, err
 	}
 
 	if c != nil {
-		c.Set(key, value, ttl)
+		_ = c.Set(key, value, ttl)
 	}
 
 	return value, false, nil
