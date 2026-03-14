@@ -32,98 +32,84 @@ func (s *FlightService) GetStatus(ctx context.Context, flightNumber string) (*mo
 	if flightNumber == "" {
 		return nil, false, fmt.Errorf("flight number is required")
 	}
-	key := fmt.Sprintf("status:%s", flightNumber)
 
-	if s.Cache != nil {
-		if raw, hit, _ := s.Cache.Get(key); hit {
-			var f models.Flight
-			if json.Unmarshal(raw, &f) == nil {
-				return &f, true, nil
-			}
-		}
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, false, err
-	}
-
-	f, err := s.Provider.GetFlightStatus(ctx, flightNumber)
-	if err != nil {
-		return nil, false, err
-	}
-
-	if s.Cache != nil {
-		s.Cache.Set(key, f, flightStatusTTL)
-	}
-
-	return f, false, nil
+	return getOrFetch(ctx, s.Cache, fmt.Sprintf("status:%s", flightNumber), flightStatusTTL, func(ctx context.Context) (*models.Flight, error) {
+		return s.Provider.GetFlightStatus(ctx, flightNumber)
+	})
 }
 
 // GetAirportFlights fetches airport departure/arrival data, using cache when available.
 // Returns (flights, cached, error).
 func (s *FlightService) GetAirportFlights(ctx context.Context, airportCode, flightType string) ([]models.AirportFlight, bool, error) {
-	airportCode = strings.ToUpper(strings.TrimSpace(airportCode))
+	airportCode = strings.TrimSpace(airportCode)
+	flightType = strings.ToLower(strings.TrimSpace(flightType))
+
 	if airportCode == "" {
 		return nil, false, fmt.Errorf("airport code is required")
 	}
-	key := fmt.Sprintf("airport:%s:%s", airportCode, flightType)
-
-	if s.Cache != nil {
-		if raw, hit, _ := s.Cache.Get(key); hit {
-			var flights []models.AirportFlight
-			if json.Unmarshal(raw, &flights) == nil {
-				return flights, true, nil
-			}
-		}
+	if flightType == "" {
+		return nil, false, fmt.Errorf("flight type is required")
 	}
 
-	if err := ctx.Err(); err != nil {
-		return nil, false, err
-	}
-
-	flights, err := s.Provider.GetAirportFlights(ctx, airportCode, flightType)
-	if err != nil {
-		return nil, false, err
-	}
-
-	if s.Cache != nil {
-		s.Cache.Set(key, flights, airportTTL)
-	}
-
-	return flights, false, nil
+	return getOrFetch(ctx, s.Cache, fmt.Sprintf("airport:%s:%s", airportCode, flightType), airportTTL, func(ctx context.Context) ([]models.AirportFlight, error) {
+		return s.Provider.GetAirportFlights(ctx, airportCode, flightType)
+	})
 }
 
 // SearchFlights searches flights between two airports, using cache when available.
 // Returns (flights, cached, error).
 func (s *FlightService) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, bool, error) {
-	from = strings.ToUpper(strings.TrimSpace(from))
-	to = strings.ToUpper(strings.TrimSpace(to))
-	if from == "" || to == "" {
-		return nil, false, fmt.Errorf("both origin and destination airport codes are required")
-	}
-	key := fmt.Sprintf("search:%s:%s", from, to)
+	from = strings.TrimSpace(from)
+	to = strings.TrimSpace(to)
 
-	if s.Cache != nil {
-		if raw, hit, _ := s.Cache.Get(key); hit {
-			var flights []models.AirportFlight
-			if json.Unmarshal(raw, &flights) == nil {
-				return flights, true, nil
+	if from == "" {
+		return nil, false, fmt.Errorf("departure airport is required")
+	}
+	if to == "" {
+		return nil, false, fmt.Errorf("arrival airport is required")
+	}
+
+	return getOrFetch(ctx, s.Cache, fmt.Sprintf("search:%s:%s", from, to), searchTTL, func(ctx context.Context) ([]models.AirportFlight, error) {
+		return s.Provider.SearchFlights(ctx, from, to)
+	})
+}
+
+func getOrFetch[T any](
+	ctx context.Context,
+	c *cache.Cache,
+	key string,
+	ttl time.Duration,
+	fetch func(context.Context) (T, error),
+) (T, bool, error) {
+	var zero T
+
+	if c != nil {
+		raw, hit, err := c.Get(key)
+		if err != nil {
+			return zero, false, fmt.Errorf("cache get %q: %w", key, err)
+		}
+		if hit {
+			var cached T
+			if json.Unmarshal(raw, &cached) == nil {
+				return cached, true, nil
 			}
 		}
 	}
 
 	if err := ctx.Err(); err != nil {
-		return nil, false, err
+		return zero, false, err
 	}
 
-	flights, err := s.Provider.SearchFlights(ctx, from, to)
+	value, err := fetch(ctx)
 	if err != nil {
-		return nil, false, err
+		return zero, false, err
 	}
 
-	if s.Cache != nil {
-		s.Cache.Set(key, flights, searchTTL)
+	if c != nil {
+		if err := c.Set(key, value, ttl); err != nil {
+			return value, false, fmt.Errorf("cache set %q: %w", key, err)
+		}
 	}
 
-	return flights, false, nil
+	return value, false, nil
 }
