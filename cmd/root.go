@@ -1,5 +1,5 @@
 /*
-Copyright © 2026 Joshua Chuah <jchuah07@gmail.com>
+Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 */
 package cmd
 
