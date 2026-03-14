@@ -1,14 +1,18 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/xjosh/flightcli/internal/models"
 )
+
+const aviationStackEndpoint = "https://api.aviationstack.com/v1/flights"
 
 type AviationStackProvider struct {
 	APIKey string
@@ -53,32 +57,17 @@ type aviationStackLive struct {
 	IsGround        bool    `json:"is_ground"`
 }
 
-func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Flight, error) {
+func (a *AviationStackProvider) GetFlightStatus(ctx context.Context, flightNumber string) (*models.Flight, error) {
 	flightIATA := normalizeFlightNumber(strings.ToUpper(strings.TrimSpace(flightNumber)))
-
-	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&flight_iata=%s", a.APIKey, flightIATA)
-
-	resp, err := providerHTTPClient.Get(url)
+	data, err := a.fetchFlights(ctx, url.Values{"flight_iata": []string{flightIATA}})
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("AviationStack API returned status %d", resp.StatusCode)
-	}
-
-	var data aviationStackResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if len(data.Data) == 0 {
+	if len(data) == 0 {
 		return nil, fmt.Errorf("no flight found for %s", flightIATA)
 	}
 
-	f := bestFlight(data.Data)
-
+	f := bestFlight(data)
 	status := f.FlightStatus
 	if status == "scheduled" && f.Live != nil {
 		status = "active"
@@ -97,14 +86,14 @@ func (a *AviationStackProvider) GetFlightStatus(flightNumber string) (*models.Fl
 	if f.Live != nil {
 		flight.Latitude = f.Live.Latitude
 		flight.Longitude = f.Live.Longitude
-		flight.Altitude = f.Live.Altitude * 3.28084      // meters to feet
-		flight.Speed = f.Live.SpeedHorizontal * 0.621371 // km/h to mph
+		flight.Altitude = f.Live.Altitude * 3.28084
+		flight.Speed = f.Live.SpeedHorizontal * 0.621371
 	}
 
 	return flight, nil
 }
 
-func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+func (a *AviationStackProvider) GetAirportFlights(ctx context.Context, airportCode string, flightType string) ([]models.AirportFlight, error) {
 	code := strings.ToUpper(strings.TrimSpace(airportCode))
 	flightType = strings.ToLower(strings.TrimSpace(flightType))
 
@@ -115,56 +104,70 @@ func (a *AviationStackProvider) GetAirportFlights(airportCode string, flightType
 		return nil, fmt.Errorf("invalid flight type %q: must be 'departures' or 'arrivals'", flightType)
 	}
 
-	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&%s=%s", a.APIKey, param, code)
-
-	resp, err := providerHTTPClient.Get(url)
+	data, err := a.fetchFlights(ctx, url.Values{param: []string{code}})
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("AviationStack API returned status %d", resp.StatusCode)
-	}
-
-	var data aviationStackResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if len(data.Data) == 0 {
+	if len(data) == 0 {
 		return nil, fmt.Errorf("no flights found for airport %s", code)
 	}
 
-	var flights []models.AirportFlight
-	for _, f := range data.Data {
+	flights := make([]models.AirportFlight, 0, len(data))
+	for _, f := range data {
 		scheduled := f.Departure.Scheduled
 		tz := f.Departure.Timezone
 		if flightType == "arrivals" {
 			scheduled = f.Arrival.Scheduled
 			tz = f.Arrival.Timezone
 		}
-
-		flights = append(flights, models.AirportFlight{
-			FlightNumber:  f.Flight.IATA,
-			Airline:       f.Airline.Name,
-			Origin:        f.Departure.IATA,
-			Destination:   f.Arrival.IATA,
-			Status:        formatStatus(f.FlightStatus),
-			ScheduledTime: parseLocalTime(tz, scheduled),
-		})
+		flights = append(flights, airportFlightFromAviationStack(f, tz, scheduled))
 	}
 
 	return flights, nil
 }
 
-func (a *AviationStackProvider) SearchFlights(from, to string) ([]models.AirportFlight, error) {
+func (a *AviationStackProvider) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, error) {
 	from = strings.ToUpper(strings.TrimSpace(from))
 	to = strings.ToUpper(strings.TrimSpace(to))
 
-	url := fmt.Sprintf("http://api.aviationstack.com/v1/flights?access_key=%s&dep_iata=%s&arr_iata=%s", a.APIKey, from, to)
+	data, err := a.fetchFlights(ctx, url.Values{
+		"dep_iata": []string{from},
+		"arr_iata": []string{to},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("no flights found for route %s -> %s", from, to)
+	}
 
-	resp, err := providerHTTPClient.Get(url)
+	flights := make([]models.AirportFlight, 0, len(data))
+	for _, f := range data {
+		flights = append(flights, airportFlightFromAviationStack(f, f.Departure.Timezone, f.Departure.Scheduled))
+	}
+	return flights, nil
+}
+
+func (a *AviationStackProvider) fetchFlights(ctx context.Context, params url.Values) ([]aviationStackFlight, error) {
+	endpoint, err := url.Parse(aviationStackEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid AviationStack endpoint: %w", err)
+	}
+
+	query := endpoint.Query()
+	for key, values := range params {
+		for _, value := range values {
+			query.Add(key, value)
+		}
+	}
+	query.Set("access_key", a.APIKey)
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("building AviationStack request: %w", err)
+	}
+	resp, err := providerHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
 	}
@@ -179,22 +182,18 @@ func (a *AviationStackProvider) SearchFlights(from, to string) ([]models.Airport
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if len(data.Data) == 0 {
-		return nil, fmt.Errorf("no flights found for route %s → %s", from, to)
-	}
+	return data.Data, nil
+}
 
-	var flights []models.AirportFlight
-	for _, f := range data.Data {
-		flights = append(flights, models.AirportFlight{
-			FlightNumber:  f.Flight.IATA,
-			Airline:       f.Airline.Name,
-			Origin:        f.Departure.IATA,
-			Destination:   f.Arrival.IATA,
-			Status:        formatStatus(f.FlightStatus),
-			ScheduledTime: parseLocalTime(f.Departure.Timezone, f.Departure.Scheduled),
-		})
+func airportFlightFromAviationStack(f aviationStackFlight, timezone, scheduled string) models.AirportFlight {
+	return models.AirportFlight{
+		FlightNumber:  f.Flight.IATA,
+		Airline:       f.Airline.Name,
+		Origin:        f.Departure.IATA,
+		Destination:   f.Arrival.IATA,
+		Status:        formatStatus(f.FlightStatus),
+		ScheduledTime: parseLocalTime(timezone, scheduled),
 	}
-	return flights, nil
 }
 
 // bestFlight picks the most relevant flight from multiple results.
@@ -259,7 +258,6 @@ func parseLocalTime(tz string, values ...string) time.Time {
 		if v == "" {
 			continue
 		}
-		// Parse ignoring the fake offset, then interpret in the real timezone
 		t, err := time.Parse("2006-01-02T15:04:05+00:00", v)
 		if err != nil {
 			continue
@@ -270,7 +268,7 @@ func parseLocalTime(tz string, values ...string) time.Time {
 }
 
 func formatStatus(status string) string {
-	switch status {
+	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "scheduled":
 		return "Scheduled"
 	case "active":

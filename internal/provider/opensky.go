@@ -1,9 +1,11 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/xjosh/flightcli/internal/models"
@@ -16,12 +18,22 @@ type openSkyResponse struct {
 	States [][]interface{} `json:"states"`
 }
 
-func (o *OpenSkyProvider) GetFlightStatus(flightNumber string) (*models.Flight, error) {
+func (o *OpenSkyProvider) GetFlightStatus(ctx context.Context, flightNumber string) (*models.Flight, error) {
 	callsign := strings.ToUpper(strings.TrimSpace(flightNumber))
 
-	url := fmt.Sprintf("https://opensky-network.org/api/states/all?callsign=%s", callsign)
+	endpoint, err := url.Parse("https://opensky-network.org/api/states/all")
+	if err != nil {
+		return nil, fmt.Errorf("invalid OpenSky endpoint: %w", err)
+	}
+	query := endpoint.Query()
+	query.Set("callsign", callsign)
+	endpoint.RawQuery = query.Encode()
 
-	resp, err := providerHTTPClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("building OpenSky request: %w", err)
+	}
+	resp, err := providerHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reach OpenSky API: %w", err)
 	}
@@ -55,11 +67,11 @@ func (o *OpenSkyProvider) GetFlightStatus(flightNumber string) (*models.Flight, 
 	return flight, nil
 }
 
-func (o *OpenSkyProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+func (o *OpenSkyProvider) GetAirportFlights(ctx context.Context, airportCode string, flightType string) ([]models.AirportFlight, error) {
 	return nil, fmt.Errorf("GetAirportFlights is not supported by the OpenSky provider")
 }
 
-func (o *OpenSkyProvider) SearchFlights(from, to string) ([]models.AirportFlight, error) {
+func (o *OpenSkyProvider) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, error) {
 	return nil, fmt.Errorf("SearchFlights is not supported by the OpenSky provider")
 }
 

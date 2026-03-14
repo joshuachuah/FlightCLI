@@ -31,6 +31,7 @@ Track a live flight by its IATA flight number:
 
 ```bash
 flightcli status AA100
+flightcli status KE038 --json
 ```
 
 Output includes airline, route, status, flight time, remaining time (if in-flight), and live position data when available.
@@ -46,6 +47,28 @@ flightcli airport JFK
 # Arrivals
 flightcli airport JFK --type arrivals
 ```
+
+### Route search
+
+Search currently listed flights between two airports:
+
+```bash
+flightcli search --from JFK --to LAX
+```
+
+### Live tracking
+
+Refresh a flight on an interval until you stop it:
+
+```bash
+flightcli track AA100 --interval 30
+```
+
+## Notes
+
+- Airport inputs are validated as 3-letter IATA codes.
+- Live API requests use HTTPS.
+- Cached commands may show a `(cached)` indicator when data is served from disk.
 
 ## Built With
 
