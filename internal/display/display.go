@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -49,6 +50,7 @@ func PrintFlightStatus(flight *models.Flight) {
 
 	labelStyle.Print("Route:    ")
 	fmt.Printf("%s -> %s\n", flight.Departure, flight.Arrival)
+	fmt.Printf("%s -> %s\n", flight.Departure, flight.Arrival)
 
 	labelStyle.Print("Status:   ")
 	StatusColor(flight.Status).Println(flight.Status)
@@ -89,7 +91,7 @@ func PrintAirportFlights(flights []models.AirportFlight, airportCode string, fli
 		if !f.ScheduledTime.IsZero() {
 			timeStr = f.ScheduledTime.Format("15:04")
 		}
-		route := fmt.Sprintf("%s -> %s", f.Origin, f.Destination)
+		route := fmt.Sprintf("%s → %s", f.Origin, f.Destination)
 		// Color is applied to status as a trailing field to avoid ANSI codes
 		// disrupting fixed-width padding on earlier columns.
 		coloredStatus := StatusColor(f.Status).Sprint(f.Status)
@@ -107,7 +109,7 @@ func PrintSearchResults(flights []models.AirportFlight, from, to string) {
 		if !f.ScheduledTime.IsZero() {
 			timeStr = f.ScheduledTime.Format("15:04")
 		}
-		route := fmt.Sprintf("%s -> %s", f.Origin, f.Destination)
+		route := fmt.Sprintf("%s → %s", f.Origin, f.Destination)
 		coloredStatus := StatusColor(f.Status).Sprint(f.Status)
 		fmt.Printf("  %-10s %-25s %-15s %s  %s\n",
 			f.FlightNumber, f.Airline, route, coloredStatus, timeStr)
@@ -139,4 +141,39 @@ func NewSpinner(suffix string) *spinner.Spinner {
 	s := spinner.New(spinner.CharSets[14], 80*time.Millisecond, spinner.WithWriter(os.Stderr))
 	s.Suffix = " " + suffix
 	return s
+}
+
+func airportBoardTitle(airportCode, flightType string) string {
+	ft := strings.TrimSpace(flightType)
+	label := "Flights"
+	switch {
+	case strings.EqualFold(ft, "arrivals"), strings.EqualFold(ft, "arrival"):
+		label = "Arrivals"
+	case strings.EqualFold(ft, "departures"), strings.EqualFold(ft, "departure"):
+		label = "Departures"
+	}
+	return fmt.Sprintf("%s for %s", label, airportCode)
+}
+
+func printAirportFlightTable(flights []models.AirportFlight, title string) {
+	labelStyle.Printf("%s:\n\n", title)
+	if len(flights) == 0{
+		dimStyle.Println(" No flights found. ")
+	}
+	for _, f := range flights {
+		fmt.Println(airportFlightRow(f))
+	}
+}
+
+func airportFlightRow(f models.AirportFlight) string {
+	timeStr := ""
+	if !f.ScheduledTime.IsZero() {
+		timeStr = f.ScheduledTime.Format("15:04")
+	}
+	route := fmt.Sprintf("%s -> %s", f.Origin, f.Destination)
+	// Color is applied to status as a trailing field to avoid ANSI codes
+	// disrupting fixed-width padding on earlier columns.
+	coloredStatus := StatusColor(f.Status).Sprint(f.Status)
+	return fmt.Sprintf("  %-10s %-25s %-15s %s  %s",
+		f.FlightNumber, f.Airline, route, coloredStatus, timeStr)
 }
