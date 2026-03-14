@@ -1,5 +1,5 @@
 /*
-Copyright © 2026 Joshua Chuah <jchuah07@gmail.com>
+Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 */
 package display
 
@@ -48,7 +48,7 @@ func PrintFlightStatus(flight *models.Flight) {
 	fmt.Println(flight.Airline)
 
 	labelStyle.Print("Route:    ")
-	fmt.Printf("%s → %s\n", flight.Departure, flight.Arrival)
+	fmt.Printf("%s -> %s\n", flight.Departure, flight.Arrival)
 
 	labelStyle.Print("Status:   ")
 	StatusColor(flight.Status).Println(flight.Status)
@@ -89,7 +89,7 @@ func PrintAirportFlights(flights []models.AirportFlight, airportCode string, fli
 		if !f.ScheduledTime.IsZero() {
 			timeStr = f.ScheduledTime.Format("15:04")
 		}
-		route := fmt.Sprintf("%s → %s", f.Origin, f.Destination)
+		route := fmt.Sprintf("%s -> %s", f.Origin, f.Destination)
 		// Color is applied to status as a trailing field to avoid ANSI codes
 		// disrupting fixed-width padding on earlier columns.
 		coloredStatus := StatusColor(f.Status).Sprint(f.Status)
@@ -107,7 +107,7 @@ func PrintSearchResults(flights []models.AirportFlight, from, to string) {
 		if !f.ScheduledTime.IsZero() {
 			timeStr = f.ScheduledTime.Format("15:04")
 		}
-		route := fmt.Sprintf("%s → %s", f.Origin, f.Destination)
+		route := fmt.Sprintf("%s -> %s", f.Origin, f.Destination)
 		coloredStatus := StatusColor(f.Status).Sprint(f.Status)
 		fmt.Printf("  %-10s %-25s %-15s %s  %s\n",
 			f.FlightNumber, f.Airline, route, coloredStatus, timeStr)
