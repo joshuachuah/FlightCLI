@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/xjosh/flightcli/internal/cache"
@@ -14,16 +15,25 @@ type stubProvider struct {
 	search      []models.AirportFlight
 }
 
-func (s *stubProvider) GetFlightStatus(flightNumber string) (*models.Flight, error) {
+func (s *stubProvider) GetFlightStatus(ctx context.Context, flightNumber string) (*models.Flight, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s.statusCalls++
 	return s.status, nil
 }
 
-func (s *stubProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+func (s *stubProvider) GetAirportFlights(ctx context.Context, airportCode string, flightType string) ([]models.AirportFlight, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return nil, nil
 }
 
-func (s *stubProvider) SearchFlights(from, to string) ([]models.AirportFlight, error) {
+func (s *stubProvider) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s.searchCalls++
 	return s.search, nil
 }
@@ -43,7 +53,7 @@ func TestGetStatusCachesProviderResponse(t *testing.T) {
 		Cache:    &cache.Cache{Dir: t.TempDir()},
 	}
 
-	flight, cached, err := service.GetStatus("AA100")
+	flight, cached, err := service.GetStatus(context.Background(), "AA100")
 	if err != nil {
 		t.Fatalf("first GetStatus returned error: %v", err)
 	}
@@ -57,7 +67,7 @@ func TestGetStatusCachesProviderResponse(t *testing.T) {
 		t.Fatalf("unexpected flight number %q", flight.FlightNumber)
 	}
 
-	flight, cached, err = service.GetStatus("AA100")
+	flight, cached, err = service.GetStatus(context.Background(), "AA100")
 	if err != nil {
 		t.Fatalf("second GetStatus returned error: %v", err)
 	}
@@ -89,7 +99,7 @@ func TestSearchFlightsCachesProviderResponse(t *testing.T) {
 		Cache:    &cache.Cache{Dir: t.TempDir()},
 	}
 
-	flights, cached, err := service.SearchFlights("JFK", "LAX")
+	flights, cached, err := service.SearchFlights(context.Background(), "JFK", "LAX")
 	if err != nil {
 		t.Fatalf("first SearchFlights returned error: %v", err)
 	}
@@ -103,7 +113,7 @@ func TestSearchFlightsCachesProviderResponse(t *testing.T) {
 		t.Fatalf("unexpected search result: %#v", flights)
 	}
 
-	flights, cached, err = service.SearchFlights("JFK", "LAX")
+	flights, cached, err = service.SearchFlights(context.Background(), "JFK", "LAX")
 	if err != nil {
 		t.Fatalf("second SearchFlights returned error: %v", err)
 	}
@@ -124,13 +134,13 @@ func TestGetStatusWithoutCacheHitsProviderEveryTime(t *testing.T) {
 	}
 	service := FlightService{Provider: provider}
 
-	if _, cached, err := service.GetStatus("AA100"); err != nil {
+	if _, cached, err := service.GetStatus(context.Background(), "AA100"); err != nil {
 		t.Fatalf("first GetStatus returned error: %v", err)
 	} else if cached {
 		t.Fatalf("expected uncached service to report cached=false")
 	}
 
-	if _, cached, err := service.GetStatus("AA100"); err != nil {
+	if _, cached, err := service.GetStatus(context.Background(), "AA100"); err != nil {
 		t.Fatalf("second GetStatus returned error: %v", err)
 	} else if cached {
 		t.Fatalf("expected uncached service to report cached=false")

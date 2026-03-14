@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 )
@@ -21,7 +22,7 @@ var providerHTTPClientMu sync.Mutex
 
 func withTestHTTPClient(t *testing.T, assert func(*http.Request), handler http.HandlerFunc) {
 	t.Helper()
-	providerHTTPClientMu.lock()
+	providerHTTPClientMu.Lock()
 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -49,7 +50,6 @@ func withTestHTTPClient(t *testing.T, assert func(*http.Request), handler http.H
 
 func TestFetchFlightsUsesHTTPSAndEncodesQuery(t *testing.T) {
 	provider := &AviationStackProvider{APIKey: "secret-key"}
-	providerHTTPClientMu.Lock()
 
 	withTestHTTPClient(t, func(req *http.Request) {
 		if req.URL.Scheme != "https" {
@@ -95,6 +95,7 @@ func TestGetFlightStatusNormalizesFlightNumber(t *testing.T) {
 
 func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
 	provider := &AviationStackProvider{APIKey: "secret-key"}
+	providerHTTPClientMu.Lock()
 
 	originalClient := providerHTTPClient
 	providerHTTPClient = &http.Client{
