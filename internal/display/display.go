@@ -50,7 +50,6 @@ func PrintFlightStatus(flight *models.Flight) {
 
 	labelStyle.Print("Route:    ")
 	fmt.Printf("%s -> %s\n", flight.Departure, flight.Arrival)
-	fmt.Printf("%s -> %s\n", flight.Departure, flight.Arrival)
 
 	labelStyle.Print("Status:   ")
 	StatusColor(flight.Status).Println(flight.Status)
@@ -86,6 +85,11 @@ func PrintAirportFlights(flights []models.AirportFlight, airportCode string, fli
 	}
 	labelStyle.Printf("%s for %s:\n\n", label, airportCode)
 
+	if len(flights) == 0 {
+		dimStyle.Println("  No flights found.")
+		return
+	}
+
 	for _, f := range flights {
 		timeStr := ""
 		if !f.ScheduledTime.IsZero() {
@@ -103,6 +107,11 @@ func PrintAirportFlights(flights []models.AirportFlight, airportCode string, fli
 // PrintSearchResults renders a route search result table.
 func PrintSearchResults(flights []models.AirportFlight, from, to string) {
 	labelStyle.Printf("Flights from %s to %s:\n\n", from, to)
+
+	if len(flights) == 0 {
+		dimStyle.Println("  No flights found.")
+		return
+	}
 
 	for _, f := range flights {
 		timeStr := ""
