@@ -29,9 +29,15 @@ var trackCmd = &cobra.Command{
 			cobra.CheckErr("--interval must be greater than 0 seconds")
 		}
 
+		apiKey, err := requireAPIKey()
+		if err != nil {
+			printAPIKeyError()
+			cobra.CheckErr(err)
+		}
+
 		flightNumber := args[0]
 		interval := time.Duration(trackInterval) * time.Second
-		svc := newFlightService(requireAPIKey(), false)
+		svc := newFlightService(apiKey, false)
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 

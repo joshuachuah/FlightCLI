@@ -16,8 +16,14 @@ var statusCmd = &cobra.Command{
 	Long:  `Track a live flight by its IATA flight number (e.g. AA100, KE38).`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		apiKey, err := requireAPIKey()
+		if err != nil {
+			printAPIKeyError()
+			cobra.CheckErr(err)
+		}
+
 		flightNumber := args[0]
-		svc := newFlightService(requireAPIKey(), true)
+		svc := newFlightService(apiKey, true)
 
 		s := display.NewSpinner(fmt.Sprintf("Fetching status for %s...", flightNumber))
 		s.Start()
@@ -29,7 +35,7 @@ var statusCmd = &cobra.Command{
 		}
 
 		if jsonOutput {
-			printJSONOutput(flight)
+			cobra.CheckErr(printJSONOutput(flight))
 			return
 		}
 
