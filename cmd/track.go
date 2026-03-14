@@ -1,5 +1,5 @@
 /*
-Copyright © 2026 Joshua Chuah <jchuah07@gmail.com>
+Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 */
 package cmd
 
@@ -12,8 +12,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/xjosh/flightcli/internal/display"
-	"github.com/xjosh/flightcli/internal/provider"
-	"github.com/xjosh/flightcli/internal/service"
 )
 
 var trackInterval int
@@ -25,60 +23,56 @@ var trackCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if jsonOutput {
-			fmt.Fprintln(os.Stderr, "Error: --json is not supported with track (live mode).")
-			fmt.Fprintln(os.Stderr, "Use 'flightcli status --json' for a one-time JSON snapshot.")
-			os.Exit(1)
+			cobra.CheckErr("--json is not supported with track (live mode); use 'flightcli status --json' for a snapshot")
 		}
 		if trackInterval <= 0 {
-			fmt.Fprintln(os.Stderr, "Error: --interval must be greater than 0 seconds.")
-			os.Exit(1)
-		}
-
-		apiKey := os.Getenv("AVIATIONSTACK_API_KEY")
-		if apiKey == "" {
-			printAPIKeyError()
-			os.Exit(1)
+			cobra.CheckErr("--interval must be greater than 0 seconds")
 		}
 
 		flightNumber := args[0]
 		interval := time.Duration(trackInterval) * time.Second
+		svc := newFlightService(requireAPIKey(), false)
+		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
 
-		p := &provider.AviationStackProvider{APIKey: apiKey}
-		svc := service.FlightService{Provider: p, Cache: nil}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 
-		// Handle Ctrl+C gracefully
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-
-		var activeSpinner = display.NewSpinner("")
-
-		go func() {
-			<-sig
-			activeSpinner.Stop()
-			fmt.Print("\r\033[K") // clear the current line
-			fmt.Println("Stopped tracking.")
-			os.Exit(0)
-		}()
+		stopTracking := func() { fmt.Println("Stopped tracking.") }
 
 		for {
-			// Clear screen and move cursor to top-left
+			if ctx.Err() != nil {
+				stopTracking()
+				return
+			}
+
 			fmt.Print("\033[2J\033[H")
 
-			activeSpinner = display.NewSpinner(fmt.Sprintf("Fetching status for %s...", flightNumber))
-			activeSpinner.Start()
-			flight, _, err := svc.GetStatus(flightNumber)
-			activeSpinner.Stop()
+			s := display.NewSpinner(fmt.Sprintf("Fetching status for %s...", flightNumber))
+			s.Start()
+			flight, _, err := svc.GetStatus(ctx, flightNumber)
+			s.Stop()
 
+			fmt.Print("\r\033[K")
 			if err != nil {
+				if ctx.Err() != nil {
+					stopTracking()
+					return
+				}
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			} else {
 				display.PrintFlightStatus(flight)
 			}
 
 			fmt.Printf("\nLast updated: %s\n", time.Now().Format("15:04:05"))
-			display.DimPrint(fmt.Sprintf("Refreshing every %ds — Press Ctrl+C to stop", trackInterval))
+			display.DimPrint(fmt.Sprintf("Refreshing every %ds - Press Ctrl+C to stop", trackInterval))
 
-			time.Sleep(interval)
+			select {
+			case <-ctx.Done():
+				stopTracking()
+				return
+			case <-ticker.C:
+			}
 		}
 	},
 }

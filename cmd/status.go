@@ -1,18 +1,13 @@
 /*
-Copyright © 2026 Joshua Chuah <jchuah07@gmail.com>
+Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 */
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/xjosh/flightcli/internal/cache"
 	"github.com/xjosh/flightcli/internal/display"
-	"github.com/xjosh/flightcli/internal/provider"
-	"github.com/xjosh/flightcli/internal/service"
 )
 
 var statusCmd = &cobra.Command{
@@ -21,35 +16,20 @@ var statusCmd = &cobra.Command{
 	Long:  `Track a live flight by its IATA flight number (e.g. AA100, KE38).`,
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		apiKey := os.Getenv("AVIATIONSTACK_API_KEY")
-		if apiKey == "" {
-			printAPIKeyError()
-			os.Exit(1)
-		}
-
 		flightNumber := args[0]
-
-		c, _ := cache.New()
-		p := &provider.AviationStackProvider{APIKey: apiKey}
-		svc := service.FlightService{Provider: p, Cache: c}
+		svc := newFlightService(requireAPIKey(), true)
 
 		s := display.NewSpinner(fmt.Sprintf("Fetching status for %s...", flightNumber))
 		s.Start()
-		flight, cached, err := svc.GetStatus(flightNumber)
+		flight, cached, err := svc.GetStatus(cmd.Context(), flightNumber)
 		s.Stop()
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching status for flight %s: %v\n", flightNumber, err)
-			os.Exit(1)
+			cobra.CheckErr(fmt.Errorf("fetching status for flight %s: %w", flightNumber, err))
 		}
 
 		if jsonOutput {
-			out, err := json.MarshalIndent(flight, "", "  ")
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
-				os.Exit(1)
-			}
-			fmt.Println(string(out))
+			printJSONOutput(flight)
 			return
 		}
 

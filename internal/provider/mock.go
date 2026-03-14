@@ -1,10 +1,17 @@
 package provider
 
-import "github.com/xjosh/flightcli/internal/models"
+import (
+	"context"
+
+	"github.com/xjosh/flightcli/internal/models"
+)
 
 type MockProvider struct{}
 
-func (m *MockProvider) GetFlightStatus(flightNumber string) (*models.Flight, error) {
+func (m *MockProvider) GetFlightStatus(ctx context.Context, flightNumber string) (*models.Flight, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return &models.Flight{
 		FlightNumber: flightNumber,
 		Airline:      "Delta Airlines",
@@ -16,7 +23,10 @@ func (m *MockProvider) GetFlightStatus(flightNumber string) (*models.Flight, err
 	}, nil
 }
 
-func (m *MockProvider) GetAirportFlights(airportCode string, flightType string) ([]models.AirportFlight, error) {
+func (m *MockProvider) GetAirportFlights(ctx context.Context, airportCode string, flightType string) ([]models.AirportFlight, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return []models.AirportFlight{
 		{
 			FlightNumber: "DL123",
@@ -28,7 +38,10 @@ func (m *MockProvider) GetAirportFlights(airportCode string, flightType string) 
 	}, nil
 }
 
-func (m *MockProvider) SearchFlights(from, to string) ([]models.AirportFlight, error) {
+func (m *MockProvider) SearchFlights(ctx context.Context, from, to string) ([]models.AirportFlight, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return []models.AirportFlight{
 		{
 			FlightNumber: "DL200",
