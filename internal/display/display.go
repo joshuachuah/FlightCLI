@@ -115,9 +115,13 @@ func NewSpinner(suffix string) *spinner.Spinner {
 }
 
 func airportBoardTitle(airportCode, flightType string) string {
-	label := "Departures"
-	if strings.EqualFold(flightType, "arrivals") {
+	ft := strings.TrimSpace(flightType)
+	label := "Flights"
+	switch {
+	case strings.EqualFold(ft, "arrivals"), strings.EqualFold(ft, "arrival"):
 		label = "Arrivals"
+	case strings.EqualFold(ft, "departures"), strings.EqualFold(ft, "departure"):
+		label = "Departures"
 	}
 	return fmt.Sprintf("%s for %s", label, airportCode)
 }
