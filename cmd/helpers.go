@@ -30,13 +30,12 @@ func printAPIKeyError() {
 	fmt.Fprintln(os.Stderr, "Get a free key at https://aviationstack.com/")
 }
 
-func requireAPIKey() string {
+func requireAPIKey() (string, error) {
 	apiKey := os.Getenv("AVIATIONSTACK_API_KEY")
 	if apiKey == "" {
-		printAPIKeyError()
-		os.Exit(1)
+		return "", fmt.Errorf("AVIATIONSTACK_API_KEY is not set")
 	}
-	return apiKey
+	return apiKey, nil
 }
 
 func newFlightService(apiKey string, useCache bool) service.FlightService {
@@ -65,11 +64,10 @@ func printJSONOutput(v interface{}) error {
 	return nil
 }
 
-func normalizeAirportCode(input, fieldName string) string {
+func normalizeAirportCode(input, fieldName string) (string, error) {
 	code := strings.ToUpper(strings.TrimSpace(input))
 	if !airportCodePattern.MatchString(code) {
-		fmt.Fprintf(os.Stderr, "Error: invalid %s %q. Use a 3-letter IATA airport code.\n", fieldName, input)
-		os.Exit(1)
+		return "", fmt.Errorf("invalid %s %q: use a 3-letter IATA airport code", fieldName, input)
 	}
-	return code
+	return code, nil
 }

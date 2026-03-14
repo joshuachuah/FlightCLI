@@ -20,9 +20,17 @@ var searchCmd = &cobra.Command{
 	Short: "Search flights between two airports",
 	Long:  `Search for current flights on a specific route using IATA airport codes.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		from := normalizeAirportCode(searchFrom, "--from")
-		to := normalizeAirportCode(searchTo, "--to")
-		svc := newFlightService(requireAPIKey(), true)
+		apiKey, err := requireAPIKey()
+		if err != nil {
+			printAPIKeyError()
+			cobra.CheckErr(err)
+		}
+
+		from, err := normalizeAirportCode(searchFrom, "--from")
+		cobra.CheckErr(err)
+		to, err := normalizeAirportCode(searchTo, "--to")
+		cobra.CheckErr(err)
+		svc := newFlightService(apiKey, true)
 
 		s := display.NewSpinner(fmt.Sprintf("Searching flights from %s to %s...", from, to))
 		s.Start()
