@@ -1,5 +1,6 @@
 /*
-Copyright 2026 NAME HERE <EMAIL ADDRESS>
+Copyright © 2026 Joshua Chuah jchuah07@gmail.com
+
 */
 package main
 
