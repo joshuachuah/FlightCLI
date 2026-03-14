@@ -1,5 +1,5 @@
 /*
-Copyright © 2026 Joshua Chuah <jchuah07@gmail.com>
+Copyright Â© 2026 Joshua Chuah <jchuah07@gmail.com>
 */
 package cache
 
@@ -30,7 +30,7 @@ func New() (*Cache, error) {
 		return nil, fmt.Errorf("could not determine home directory: %w", err)
 	}
 	dir := filepath.Join(home, ".flightcli", "cache")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("could not create cache directory: %w", err)
 	}
 	return &Cache{Dir: dir}, nil
@@ -55,7 +55,7 @@ func (c *Cache) Get(key string) (json.RawMessage, bool, error) {
 
 	var e entry
 	if err := json.Unmarshal(b, &e); err != nil {
-		return nil, false, nil // corrupt file — treat as miss
+		return nil, false, nil // corrupt file - treat as miss
 	}
 
 	if time.Now().After(e.ExpiresAt) {
@@ -83,5 +83,5 @@ func (c *Cache) Set(key string, data interface{}, ttl time.Duration) error {
 		return fmt.Errorf("marshaling cache entry: %w", err)
 	}
 
-	return os.WriteFile(c.keyPath(key), b, 0644)
+	return os.WriteFile(c.keyPath(key), b, 0600)
 }
