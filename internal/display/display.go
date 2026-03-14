@@ -128,6 +128,9 @@ func airportBoardTitle(airportCode, flightType string) string {
 
 func printAirportFlightTable(flights []models.AirportFlight, title string) {
 	labelStyle.Printf("%s:\n\n", title)
+	if len(flights) == 0{
+		dimStyle.Println(" No flights found. ")
+	}
 	for _, f := range flights {
 		fmt.Println(airportFlightRow(f))
 	}
