@@ -84,7 +84,11 @@ func getOrFetch[T any](
 	var zero T
 
 	if c != nil {
-		if raw, hit, _ := c.Get(key); hit {
+		raw, hit, err := c.Get(key)
+		if err != nil {
+			return zero, false, fmt.Errorf("cache get %q: %w", key, err)
+		}
+		if hit {
 			var cached T
 			if json.Unmarshal(raw, &cached) == nil {
 				return cached, true, nil
@@ -102,7 +106,9 @@ func getOrFetch[T any](
 	}
 
 	if c != nil {
-		_ = c.Set(key, value, ttl)
+		if err := c.Set(key, value, ttl); err != nil {
+			return value, false, fmt.Errorf("cache set %q: %w", key, err)
+		}
 	}
 
 	return value, false, nil
