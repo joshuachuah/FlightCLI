@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -115,7 +116,7 @@ func NewSpinner(suffix string) *spinner.Spinner {
 
 func airportBoardTitle(airportCode, flightType string) string {
 	label := "Departures"
-	if flightType == "arrivals" {
+	if strings.EqualFold(flightType, "arrivals") {
 		label = "Arrivals"
 	}
 	return fmt.Sprintf("%s for %s", label, airportCode)
