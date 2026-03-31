@@ -79,50 +79,12 @@ func PrintFlightStatus(flight *models.Flight) {
 
 // PrintAirportFlights renders the airport flight table with colored status.
 func PrintAirportFlights(flights []models.AirportFlight, airportCode string, flightType string) {
-	label := "Departures"
-	if flightType == "arrivals" {
-		label = "Arrivals"
-	}
-	labelStyle.Printf("%s for %s:\n\n", label, airportCode)
-
-	if len(flights) == 0 {
-		dimStyle.Println("  No flights found.")
-		return
-	}
-
-	for _, f := range flights {
-		timeStr := ""
-		if !f.ScheduledTime.IsZero() {
-			timeStr = f.ScheduledTime.Format("15:04")
-		}
-		route := fmt.Sprintf("%s → %s", f.Origin, f.Destination)
-		// Color is applied to status as a trailing field to avoid ANSI codes
-		// disrupting fixed-width padding on earlier columns.
-		coloredStatus := StatusColor(f.Status).Sprint(f.Status)
-		fmt.Printf("  %-10s %-25s %-15s %s  %s\n",
-			f.FlightNumber, f.Airline, route, coloredStatus, timeStr)
-	}
+	printAirportFlightTable(flights, airportBoardTitle(airportCode, flightType))
 }
 
 // PrintSearchResults renders a route search result table.
 func PrintSearchResults(flights []models.AirportFlight, from, to string) {
-	labelStyle.Printf("Flights from %s to %s:\n\n", from, to)
-
-	if len(flights) == 0 {
-		dimStyle.Println("  No flights found.")
-		return
-	}
-
-	for _, f := range flights {
-		timeStr := ""
-		if !f.ScheduledTime.IsZero() {
-			timeStr = f.ScheduledTime.Format("15:04")
-		}
-		route := fmt.Sprintf("%s → %s", f.Origin, f.Destination)
-		coloredStatus := StatusColor(f.Status).Sprint(f.Status)
-		fmt.Printf("  %-10s %-25s %-15s %s  %s\n",
-			f.FlightNumber, f.Airline, route, coloredStatus, timeStr)
-	}
+	printAirportFlightTable(flights, fmt.Sprintf("Flights from %s to %s", from, to))
 }
 
 // PrintCachedIndicator prints a dim "(cached)" label on its own line.
@@ -166,9 +128,11 @@ func airportBoardTitle(airportCode, flightType string) string {
 
 func printAirportFlightTable(flights []models.AirportFlight, title string) {
 	labelStyle.Printf("%s:\n\n", title)
-	if len(flights) == 0{
-		dimStyle.Println(" No flights found. ")
+	if len(flights) == 0 {
+		dimStyle.Println("  No flights found.")
+		return
 	}
+
 	for _, f := range flights {
 		fmt.Println(airportFlightRow(f))
 	}

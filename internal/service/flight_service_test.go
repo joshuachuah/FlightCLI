@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/xjosh/flightcli/internal/cache"
@@ -148,5 +150,37 @@ func TestGetStatusWithoutCacheHitsProviderEveryTime(t *testing.T) {
 
 	if provider.statusCalls != 2 {
 		t.Fatalf("expected provider to be called twice without a cache, got %d", provider.statusCalls)
+	}
+}
+
+func TestGetStatusIgnoresCacheWriteFailures(t *testing.T) {
+	cacheRoot := filepath.Join(t.TempDir(), "cache-file")
+	if err := os.WriteFile(cacheRoot, []byte("not-a-directory"), 0600); err != nil {
+		t.Fatalf("write fake cache root: %v", err)
+	}
+
+	provider := &stubProvider{
+		status: &models.Flight{FlightNumber: "AA100"},
+	}
+	service := FlightService{
+		Provider: provider,
+		Cache:    &cache.Cache{Dir: cacheRoot},
+	}
+
+	for i := 0; i < 2; i++ {
+		flight, cached, err := service.GetStatus(context.Background(), "AA100")
+		if err != nil {
+			t.Fatalf("GetStatus returned error with broken cache path: %v", err)
+		}
+		if cached {
+			t.Fatalf("expected broken cache path to skip caching")
+		}
+		if flight == nil || flight.FlightNumber != "AA100" {
+			t.Fatalf("unexpected flight returned from provider: %#v", flight)
+		}
+	}
+
+	if provider.statusCalls != 2 {
+		t.Fatalf("expected provider to be called for each request when cache writes fail, got %d", provider.statusCalls)
 	}
 }

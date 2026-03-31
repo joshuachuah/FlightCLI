@@ -16,6 +16,7 @@ flightcli
 # Go coverage
 *.out
 coverage.html
+.gocache/
 
 # IDE
 .idea/
