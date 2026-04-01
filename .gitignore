@@ -12,7 +12,6 @@ flightcli
 
 # Go test binary
 *.test
-*_test.go
 
 # Go coverage
 *.out

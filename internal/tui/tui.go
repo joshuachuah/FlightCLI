@@ -153,8 +153,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return m, tea.Quit
+		case "q":
+			if m.screen == screenHome || m.screen == screenResult {
+				return m, tea.Quit
+			}
 		}
 
 		switch m.screen {
@@ -296,7 +300,7 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *model) startRequest(q query) tea.Cmd {
 	requestCtx, cancel := context.WithTimeout(m.appCtx, 20*time.Second)
 	m.requestCancel = cancel
-	return fetchQueryCmd(requestCtx, m.service, m.activeRequest, q)
+	return fetchQueryCmd(requestCtx, cancel, m.service, m.activeRequest, q)
 }
 
 func (m *model) moveFocus(key string) {
@@ -323,8 +327,10 @@ func (m *model) moveFocus(key string) {
 	}
 }
 
-func fetchQueryCmd(ctx context.Context, svc service.FlightService, requestID int, q query) tea.Cmd {
+func fetchQueryCmd(ctx context.Context, cancel context.CancelFunc, svc service.FlightService, requestID int, q query) tea.Cmd {
 	return func() tea.Msg {
+		defer cancel()
+
 		switch q.kind {
 		case queryFlight:
 			flight, cached, err := svc.GetStatus(ctx, q.flight)
@@ -539,11 +545,4 @@ func capitalize(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
