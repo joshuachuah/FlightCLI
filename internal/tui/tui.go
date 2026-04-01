@@ -49,6 +49,7 @@ type resultPayload struct {
 }
 
 type model struct {
+	appCtx        context.Context
 	service       service.FlightService
 	screen        screen
 	width         int
@@ -58,6 +59,7 @@ type model struct {
 	inputs        []string
 	loading       bool
 	activeRequest int
+	requestCancel context.CancelFunc
 	err           string
 	lastUpdated   time.Time
 	lastQuery     query
@@ -83,13 +85,14 @@ const homeBanner = `███████╗██╗     ██╗ ████
 ╚═╝     ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝    ╚═════╝╚══════╝╚═╝`
 
 func Launch(ctx context.Context, svc service.FlightService) error {
-	p := tea.NewProgram(initialModel(svc), tea.WithAltScreen(), tea.WithContext(ctx))
+	p := tea.NewProgram(initialModel(ctx, svc), tea.WithAltScreen(), tea.WithContext(ctx))
 	_, err := p.Run()
 	return err
 }
 
-func initialModel(svc service.FlightService) model {
+func initialModel(ctx context.Context, svc service.FlightService) model {
 	return model{
+		appCtx:        ctx,
 		service:       svc,
 		screen:        screenHome,
 		inputs:        []string{"", "", ""},
@@ -112,6 +115,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.loading = false
+		m.requestCancel = nil
 		if msg.err != nil {
 			m.err = msg.err.Error()
 			m.statusMessage = "Request failed. Press esc to go back."
@@ -131,10 +135,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.loading {
 			switch msg.String() {
 			case "ctrl+c", "q":
+				if m.requestCancel != nil {
+					m.requestCancel()
+				}
 				return m, tea.Quit
 			case "esc":
 				m.loading = false
 				m.activeRequest++
+				if m.requestCancel != nil {
+					m.requestCancel()
+					m.requestCancel = nil
+				}
 				m.statusMessage = "Request dismissed. Press Enter to try again."
 				return m, nil
 			}
@@ -218,7 +229,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Fetching flight status..."
-			return m, fetchQueryCmd(m.service, m.activeRequest, q)
+			return m, m.startRequest(q)
 		case screenAirportForm:
 			code := strings.TrimSpace(m.inputs[0])
 			flightType := strings.TrimSpace(m.inputs[1])
@@ -234,7 +245,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Fetching airport board..."
-			return m, fetchQueryCmd(m.service, m.activeRequest, q)
+			return m, m.startRequest(q)
 		case screenSearchForm:
 			q := query{
 				kind: querySearch,
@@ -249,7 +260,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Searching route..."
-			return m, fetchQueryCmd(m.service, m.activeRequest, q)
+			return m, m.startRequest(q)
 		}
 	default:
 		if len(msg.Runes) > 0 && !msg.Alt {
@@ -277,9 +288,15 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.err = ""
 		m.statusMessage = "Refreshing..."
-		return m, fetchQueryCmd(m.service, m.activeRequest, m.lastQuery)
+		return m, m.startRequest(m.lastQuery)
 	}
 	return m, nil
+}
+
+func (m *model) startRequest(q query) tea.Cmd {
+	requestCtx, cancel := context.WithTimeout(m.appCtx, 20*time.Second)
+	m.requestCancel = cancel
+	return fetchQueryCmd(requestCtx, m.service, m.activeRequest, q)
 }
 
 func (m *model) moveFocus(key string) {
@@ -306,11 +323,8 @@ func (m *model) moveFocus(key string) {
 	}
 }
 
-func fetchQueryCmd(svc service.FlightService, requestID int, q query) tea.Cmd {
+func fetchQueryCmd(ctx context.Context, svc service.FlightService, requestID int, q query) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-
 		switch q.kind {
 		case queryFlight:
 			flight, cached, err := svc.GetStatus(ctx, q.flight)
