@@ -21,6 +21,9 @@ routes between airports.
 
 Requires an AviationStack API key set via the AVIATIONSTACK_API_KEY
 environment variable or a .env file in the current directory.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		cobra.CheckErr(runTUI(cmd))
+	},
 }
 
 func Execute() {
