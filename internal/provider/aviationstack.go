@@ -73,14 +73,19 @@ func (a *AviationStackProvider) GetFlightStatus(ctx context.Context, flightNumbe
 		status = "active"
 	}
 
+	departureTime, arrivalTime := normalizeFlightWindow(
+		parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled),
+		parseLocalTime(f.Arrival.Timezone, f.Arrival.Actual, f.Arrival.Estimated, f.Arrival.Scheduled),
+	)
+
 	flight := &models.Flight{
 		FlightNumber:  flightIATA,
 		Airline:       f.Airline.Name,
 		Departure:     f.Departure.IATA,
 		Arrival:       f.Arrival.IATA,
 		Status:        formatStatus(status),
-		DepartureTime: parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled),
-		ArrivalTime:   parseLocalTime(f.Arrival.Timezone, f.Arrival.Actual, f.Arrival.Estimated, f.Arrival.Scheduled),
+		DepartureTime: departureTime,
+		ArrivalTime:   arrivalTime,
 	}
 
 	if f.Live != nil {
@@ -120,7 +125,7 @@ func (a *AviationStackProvider) GetAirportFlights(ctx context.Context, airportCo
 			scheduled = f.Arrival.Scheduled
 			tz = f.Arrival.Timezone
 		}
-		flights = append(flights, airportFlightFromAviationStack(f, tz, scheduled))
+		flights = append(flights, airportFlightFromAviationStack(f, parseLocalTime(tz, scheduled)))
 	}
 
 	return flights, nil
@@ -143,7 +148,7 @@ func (a *AviationStackProvider) SearchFlights(ctx context.Context, from, to stri
 
 	flights := make([]models.AirportFlight, 0, len(data))
 	for _, f := range data {
-		flights = append(flights, airportFlightFromAviationStack(f, f.Departure.Timezone, f.Departure.Scheduled))
+		flights = append(flights, airportFlightFromAviationStack(f, parseLocalTime(f.Departure.Timezone, f.Departure.Scheduled)))
 	}
 	return flights, nil
 }
@@ -185,15 +190,36 @@ func (a *AviationStackProvider) fetchFlights(ctx context.Context, params url.Val
 	return data.Data, nil
 }
 
-func airportFlightFromAviationStack(f aviationStackFlight, timezone, scheduled string) models.AirportFlight {
-	return models.AirportFlight{
+func airportFlightFromAviationStack(f aviationStackFlight, scheduled time.Time) models.AirportFlight {
+	status := f.FlightStatus
+	if status == "scheduled" && f.Live != nil {
+		status = "active"
+	}
+
+	departureTime, arrivalTime := normalizeFlightWindow(
+		parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled),
+		parseLocalTime(f.Arrival.Timezone, f.Arrival.Actual, f.Arrival.Estimated, f.Arrival.Scheduled),
+	)
+
+	flight := models.AirportFlight{
 		FlightNumber:  f.Flight.IATA,
 		Airline:       f.Airline.Name,
 		Origin:        f.Departure.IATA,
 		Destination:   f.Arrival.IATA,
-		Status:        formatStatus(f.FlightStatus),
-		ScheduledTime: parseLocalTime(timezone, scheduled),
+		Status:        formatStatus(status),
+		DepartureTime: departureTime,
+		ArrivalTime:   arrivalTime,
+		ScheduledTime: scheduled,
 	}
+
+	if f.Live != nil {
+		flight.Latitude = f.Live.Latitude
+		flight.Longitude = f.Live.Longitude
+		flight.Altitude = f.Live.Altitude * 3.28084
+		flight.Speed = f.Live.SpeedHorizontal * 0.621371
+	}
+
+	return flight
 }
 
 // bestFlight picks the most relevant flight from multiple results.
@@ -265,6 +291,18 @@ func parseLocalTime(tz string, values ...string) time.Time {
 		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, loc)
 	}
 	return time.Time{}
+}
+
+func normalizeFlightWindow(departure, arrival time.Time) (time.Time, time.Time) {
+	if departure.IsZero() || arrival.IsZero() || arrival.After(departure) {
+		return departure, arrival
+	}
+
+	for i := 0; i < 3 && !arrival.After(departure); i++ {
+		arrival = arrival.Add(24 * time.Hour)
+	}
+
+	return departure, arrival
 }
 
 func formatStatus(status string) string {

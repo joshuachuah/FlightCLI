@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/xjosh/flightcli/internal/display"
 	"github.com/xjosh/flightcli/internal/models"
 	"github.com/xjosh/flightcli/internal/service"
 )
@@ -435,6 +436,8 @@ func (m model) viewResult() string {
 	}
 	if m.flight != nil {
 		b.WriteString(formatFlight(m.flight))
+	} else if m.lastQuery.kind == querySearch {
+		b.WriteString(formatSearchResults(m.flights))
 	} else {
 		b.WriteString(formatBoard(m.flights))
 	}
@@ -489,23 +492,7 @@ func titleForQuery(q query) string {
 }
 
 func formatFlight(flight *models.Flight) string {
-	var lines []string
-	lines = append(lines, "Flight:   "+flight.FlightNumber)
-	lines = append(lines, "Airline:  "+flight.Airline)
-	lines = append(lines, "Route:    "+flight.Departure+" -> "+flight.Arrival)
-	lines = append(lines, "Status:   "+flight.Status)
-	if !flight.DepartureTime.IsZero() {
-		lines = append(lines, "Departure: "+flight.DepartureTime.Format(time.RFC1123))
-	}
-	if !flight.ArrivalTime.IsZero() {
-		lines = append(lines, "Arrival:   "+flight.ArrivalTime.Format(time.RFC1123))
-	}
-	if flight.Latitude != 0 || flight.Longitude != 0 {
-		lines = append(lines, fmt.Sprintf("Location: %.4f, %.4f", flight.Latitude, flight.Longitude))
-		lines = append(lines, fmt.Sprintf("Altitude: %.0f ft", flight.Altitude))
-		lines = append(lines, fmt.Sprintf("Speed:    %.0f mph", flight.Speed))
-	}
-	return strings.Join(lines, "\n")
+	return formatFlightAt(flight, time.Now())
 }
 
 func formatBoard(flights []models.AirportFlight) string {
@@ -528,6 +515,22 @@ func formatBoard(flights []models.AirportFlight) string {
 		))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func formatFlightAt(flight *models.Flight, now time.Time) string {
+	return strings.Join(display.FlightStatusLines(flight, now), "\n")
+}
+
+func formatSearchResults(flights []models.AirportFlight) string {
+	if len(flights) == 0 {
+		return "No flights found."
+	}
+
+	sections := make([]string, 0, len(flights))
+	for _, flight := range flights {
+		sections = append(sections, strings.Join(display.SearchFlightLines(flight), "\n"))
+	}
+	return strings.Join(sections, "\n\n")
 }
 
 func trimForWidth(s string, width int) string {
