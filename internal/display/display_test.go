@@ -177,3 +177,54 @@ func TestSearchFlightLinesIncludeRestoredMetrics(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchFlightLinesIncludeZeroTelemetryWhenLocationExists(t *testing.T) {
+	lines := SearchFlightLines(models.AirportFlight{
+		FlightNumber: "DL201",
+		Airline:      "Delta Airlines",
+		Origin:       "JFK",
+		Destination:  "LAX",
+		Status:       "In Flight",
+		Latitude:     40.7128,
+		Longitude:    -73.9352,
+		Altitude:     0,
+		Speed:        0,
+	})
+
+	output := strings.Join(lines, "\n")
+	for _, part := range []string{"Location:", "Altitude:  0 ft", "Speed:     0 mph"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("search lines %q missing %q", output, part)
+		}
+	}
+}
+
+func TestPrintSearchResultsIncludeZeroTelemetryWhenLocationExists(t *testing.T) {
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	t.Cleanup(func() {
+		color.NoColor = originalNoColor
+	})
+
+	output := captureStdout(t, func() {
+		PrintSearchResults([]models.AirportFlight{
+			{
+				FlightNumber: "DL201",
+				Airline:      "Delta Airlines",
+				Origin:       "JFK",
+				Destination:  "LAX",
+				Status:       "In Flight",
+				Latitude:     40.7128,
+				Longitude:    -73.9352,
+				Altitude:     0,
+				Speed:        0,
+			},
+		}, "JFK", "LAX")
+	})
+
+	for _, part := range []string{"Location:", "Altitude:", "0 ft", "Speed:", "0 mph"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("search output %q missing %q", output, part)
+		}
+	}
+}

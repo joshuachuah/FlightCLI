@@ -190,13 +190,11 @@ func SearchFlightLines(flight models.AirportFlight) []string {
 		lines = append(lines, "Arrival:   "+formatFlightTimestamp(flight.ArrivalTime))
 	}
 	if flight.Latitude != 0 || flight.Longitude != 0 {
-		lines = append(lines, fmt.Sprintf("Location:  %.4f, %.4f", flight.Latitude, flight.Longitude))
-	}
-	if flight.Altitude != 0 {
-		lines = append(lines, fmt.Sprintf("Altitude:  %.0f ft", flight.Altitude))
-	}
-	if flight.Speed != 0 {
-		lines = append(lines, fmt.Sprintf("Speed:     %.0f mph", flight.Speed))
+		lines = append(lines,
+			fmt.Sprintf("Location:  %.4f, %.4f", flight.Latitude, flight.Longitude),
+			fmt.Sprintf("Altitude:  %.0f ft", flight.Altitude),
+			fmt.Sprintf("Speed:     %.0f mph", flight.Speed),
+		)
 	}
 
 	return lines
@@ -263,12 +261,8 @@ func printSearchFlight(f models.AirportFlight) {
 	if f.Latitude != 0 || f.Longitude != 0 {
 		labelStyle.Print("Location:  ")
 		fmt.Printf("%.4f, %.4f\n", f.Latitude, f.Longitude)
-	}
-	if f.Altitude != 0 {
 		labelStyle.Print("Altitude:  ")
 		fmt.Printf("%.0f ft\n", f.Altitude)
-	}
-	if f.Speed != 0 {
 		labelStyle.Print("Speed:     ")
 		fmt.Printf("%.0f mph\n", f.Speed)
 	}

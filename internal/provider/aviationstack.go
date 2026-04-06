@@ -68,10 +68,7 @@ func (a *AviationStackProvider) GetFlightStatus(ctx context.Context, flightNumbe
 	}
 
 	f := bestFlight(data)
-	status := f.FlightStatus
-	if status == "scheduled" && f.Live != nil {
-		status = "active"
-	}
+	status := effectiveFlightStatus(f)
 
 	departureTime, arrivalTime := normalizeFlightWindow(
 		parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled),
@@ -191,10 +188,7 @@ func (a *AviationStackProvider) fetchFlights(ctx context.Context, params url.Val
 }
 
 func airportFlightFromAviationStack(f aviationStackFlight, scheduled time.Time) models.AirportFlight {
-	status := f.FlightStatus
-	if status == "scheduled" && f.Live != nil {
-		status = "active"
-	}
+	status := effectiveFlightStatus(f)
 
 	departureTime, arrivalTime := normalizeFlightWindow(
 		parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled),
@@ -227,15 +221,23 @@ func airportFlightFromAviationStack(f aviationStackFlight, scheduled time.Time) 
 // scheduled flight when the current one is still in the air.
 func bestFlight(flights []aviationStackFlight) aviationStackFlight {
 	best := flights[0]
-	bestPri := flightPriority(best.FlightStatus)
+	bestPri := flightPriority(effectiveFlightStatus(best))
 	for _, f := range flights[1:] {
-		p := flightPriority(f.FlightStatus)
+		p := flightPriority(effectiveFlightStatus(f))
 		if p < bestPri {
 			best = f
 			bestPri = p
 		}
 	}
 	return best
+}
+
+func effectiveFlightStatus(f aviationStackFlight) string {
+	status := strings.ToLower(strings.TrimSpace(f.FlightStatus))
+	if status == "scheduled" && f.Live != nil {
+		return "active"
+	}
+	return status
 }
 
 func flightPriority(status string) int {
@@ -299,7 +301,7 @@ func normalizeFlightWindow(departure, arrival time.Time) (time.Time, time.Time) 
 	}
 
 	for i := 0; i < 3 && !arrival.After(departure); i++ {
-		arrival = arrival.Add(24 * time.Hour)
+		arrival = arrival.AddDate(0, 0, 1)
 	}
 
 	return departure, arrival

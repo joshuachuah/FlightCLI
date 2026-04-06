@@ -93,6 +93,35 @@ func TestGetFlightStatusNormalizesFlightNumber(t *testing.T) {
 	}
 }
 
+func TestGetFlightStatusPrefersScheduledFlightWithLiveTelemetry(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+
+	withTestHTTPClient(t, func(req *http.Request) {
+		if got := req.URL.Query().Get("flight_iata"); got != "AA100" {
+			t.Fatalf("expected flight_iata=AA100, got %q", got)
+		}
+	}, func(w http.ResponseWriter, req *http.Request) {
+		fmt.Fprint(w, `{"data":[
+			{"flight_status":"landed","departure":{"iata":"JFK","timezone":"America/New_York","scheduled":"2026-03-13T08:00:00+00:00"},"arrival":{"iata":"LAX","timezone":"America/Los_Angeles","scheduled":"2026-03-13T11:00:00+00:00"},"airline":{"name":"Old Air"},"flight":{"iata":"AA100"}},
+			{"flight_status":"scheduled","departure":{"iata":"JFK","timezone":"America/New_York","scheduled":"2026-03-13T09:00:00+00:00"},"arrival":{"iata":"LAX","timezone":"America/Los_Angeles","scheduled":"2026-03-13T12:00:00+00:00"},"airline":{"name":"Live Air"},"flight":{"iata":"AA100"},"live":{"latitude":40.7128,"longitude":-73.9352,"altitude":10000,"speed_horizontal":800}}
+		]}`)
+	})
+
+	flight, err := provider.GetFlightStatus(context.Background(), "AA100")
+	if err != nil {
+		t.Fatalf("GetFlightStatus returned error: %v", err)
+	}
+	if flight.Status != "In Flight" {
+		t.Fatalf("expected live scheduled flight to be selected as In Flight, got %q", flight.Status)
+	}
+	if flight.Airline != "Live Air" {
+		t.Fatalf("expected live scheduled flight to be selected, got airline %q", flight.Airline)
+	}
+	if flight.Latitude == 0 || flight.Longitude == 0 {
+		t.Fatalf("expected telemetry from selected live flight, got %#v", flight)
+	}
+}
+
 func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
 	provider := &AviationStackProvider{APIKey: "secret-key"}
 	providerHTTPClientMu.Lock()
@@ -176,5 +205,21 @@ func TestNormalizeFlightWindowRollsArrivalForwardWhenNeeded(t *testing.T) {
 	expectedArrival := time.Date(2026, time.April, 5, 22, 8, 0, 0, arrivalLoc)
 	if !normalizedArrival.Equal(expectedArrival) {
 		t.Fatalf("expected arrival to roll forward to %v, got %v", expectedArrival, normalizedArrival)
+	}
+}
+
+func TestNormalizeFlightWindowPreservesWallClockAcrossDST(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+
+	departure := time.Date(2026, time.March, 8, 21, 0, 0, 0, loc)
+	arrival := time.Date(2026, time.March, 7, 22, 8, 0, 0, loc)
+
+	_, normalizedArrival := normalizeFlightWindow(departure, arrival)
+	expectedArrival := time.Date(2026, time.March, 8, 22, 8, 0, 0, loc)
+	if !normalizedArrival.Equal(expectedArrival) {
+		t.Fatalf("expected DST-normalized arrival to be %v, got %v", expectedArrival, normalizedArrival)
 	}
 }
