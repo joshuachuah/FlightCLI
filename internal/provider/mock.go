@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"time"
 
 	"github.com/xjosh/flightcli/internal/models"
 )
@@ -44,11 +45,17 @@ func (m *MockProvider) SearchFlights(ctx context.Context, from, to string) ([]mo
 	}
 	return []models.AirportFlight{
 		{
-			FlightNumber: "DL200",
-			Airline:      "Delta Airlines",
-			Origin:       from,
-			Destination:  to,
-			Status:       "Scheduled",
+			FlightNumber:  "DL200",
+			Airline:       "Delta Airlines",
+			Origin:        from,
+			Destination:   to,
+			Status:        "In Flight",
+			Latitude:      40.7128,
+			Longitude:     -73.9352,
+			Altitude:      34500,
+			Speed:         515,
+			DepartureTime: time.Date(2026, time.April, 1, 8, 0, 0, 0, time.UTC),
+			ArrivalTime:   time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC),
 		},
 	}, nil
 }

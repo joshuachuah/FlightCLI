@@ -22,5 +22,11 @@ type AirportFlight struct {
 	Origin        string    `json:"origin"`
 	Destination   string    `json:"destination"`
 	Status        string    `json:"status"`
+	Altitude      float64   `json:"altitude,omitempty"`
+	Speed         float64   `json:"speed,omitempty"`
+	Latitude      float64   `json:"latitude,omitempty"`
+	Longitude     float64   `json:"longitude,omitempty"`
+	DepartureTime time.Time `json:"departure_time,omitempty"`
+	ArrivalTime   time.Time `json:"arrival_time,omitempty"`
 	ScheduledTime time.Time `json:"scheduled_time,omitempty"`
 }

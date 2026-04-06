@@ -25,7 +25,10 @@ func TestTitleForQuery(t *testing.T) {
 }
 
 func TestFormatFlightIncludesRouteAndTelemetry(t *testing.T) {
-	output := formatFlight(&models.Flight{
+	departure := time.Date(2026, time.April, 1, 8, 0, 0, 0, time.UTC)
+	arrival := time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC)
+
+	output := formatFlightAt(&models.Flight{
 		FlightNumber:  "AA100",
 		Airline:       "American Airlines",
 		Departure:     "JFK",
@@ -35,11 +38,11 @@ func TestFormatFlightIncludesRouteAndTelemetry(t *testing.T) {
 		Speed:         510,
 		Latitude:      40.7,
 		Longitude:     -73.9,
-		DepartureTime: time.Date(2026, time.April, 1, 8, 0, 0, 0, time.UTC),
-		ArrivalTime:   time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC),
-	})
+		DepartureTime: departure,
+		ArrivalTime:   arrival,
+	}, departure.Add(90*time.Minute))
 
-	for _, part := range []string{"Flight:   AA100", "Route:    JFK -> LAX", "Status:   In Flight", "Altitude: 35000 ft"} {
+	for _, part := range []string{"Flight:   AA100", "Route:    JFK -> LAX", "Status:   In Flight", "Altitude: 35000 ft", "Time Elapsed: 1h 30m", "Time to Destination: 1h 30m"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("flight output %q missing %q", output, part)
 		}
@@ -61,6 +64,30 @@ func TestFormatBoardIncludesRows(t *testing.T) {
 	for _, part := range []string{"DL200", "Delta Air Lines", "JFK->LAX", "Scheduled", "16:45"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("board output %q missing %q", output, part)
+		}
+	}
+}
+
+func TestFormatSearchResultsIncludesRestoredMetrics(t *testing.T) {
+	output := formatSearchResults([]models.AirportFlight{
+		{
+			FlightNumber:  "DL200",
+			Airline:       "Delta Air Lines",
+			Origin:        "JFK",
+			Destination:   "LAX",
+			Status:        "In Flight",
+			Latitude:      40.7,
+			Longitude:     -73.9,
+			Altitude:      35000,
+			Speed:         510,
+			DepartureTime: time.Date(2026, time.April, 1, 8, 0, 0, 0, time.UTC),
+			ArrivalTime:   time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC),
+		},
+	})
+
+	for _, part := range []string{"Departure:", "Arrival:", "Location:", "Altitude:", "Speed:"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("search output %q missing %q", output, part)
 		}
 	}
 }

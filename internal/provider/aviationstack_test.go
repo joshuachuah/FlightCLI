@@ -93,6 +93,35 @@ func TestGetFlightStatusNormalizesFlightNumber(t *testing.T) {
 	}
 }
 
+func TestGetFlightStatusPrefersScheduledFlightWithLiveTelemetry(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+
+	withTestHTTPClient(t, func(req *http.Request) {
+		if got := req.URL.Query().Get("flight_iata"); got != "AA100" {
+			t.Fatalf("expected flight_iata=AA100, got %q", got)
+		}
+	}, func(w http.ResponseWriter, req *http.Request) {
+		fmt.Fprint(w, `{"data":[
+			{"flight_status":"landed","departure":{"iata":"JFK","timezone":"America/New_York","scheduled":"2026-03-13T08:00:00+00:00"},"arrival":{"iata":"LAX","timezone":"America/Los_Angeles","scheduled":"2026-03-13T11:00:00+00:00"},"airline":{"name":"Old Air"},"flight":{"iata":"AA100"}},
+			{"flight_status":"scheduled","departure":{"iata":"JFK","timezone":"America/New_York","scheduled":"2026-03-13T09:00:00+00:00"},"arrival":{"iata":"LAX","timezone":"America/Los_Angeles","scheduled":"2026-03-13T12:00:00+00:00"},"airline":{"name":"Live Air"},"flight":{"iata":"AA100"},"live":{"latitude":40.7128,"longitude":-73.9352,"altitude":10000,"speed_horizontal":800}}
+		]}`)
+	})
+
+	flight, err := provider.GetFlightStatus(context.Background(), "AA100")
+	if err != nil {
+		t.Fatalf("GetFlightStatus returned error: %v", err)
+	}
+	if flight.Status != "In Flight" {
+		t.Fatalf("expected live scheduled flight to be selected as In Flight, got %q", flight.Status)
+	}
+	if flight.Airline != "Live Air" {
+		t.Fatalf("expected live scheduled flight to be selected, got airline %q", flight.Airline)
+	}
+	if flight.Latitude == 0 || flight.Longitude == 0 {
+		t.Fatalf("expected telemetry from selected live flight, got %#v", flight)
+	}
+}
+
 func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
 	provider := &AviationStackProvider{APIKey: "secret-key"}
 	providerHTTPClientMu.Lock()
@@ -118,5 +147,79 @@ func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
 	_, err := provider.fetchFlights(ctx, url.Values{"flight_iata": []string{"AA100"}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation, got %v", err)
+	}
+}
+
+func TestSearchFlightsIncludesDetailedMetrics(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+
+	withTestHTTPClient(t, func(req *http.Request) {
+		if got := req.URL.Query().Get("dep_iata"); got != "JFK" {
+			t.Fatalf("expected dep_iata=JFK, got %q", got)
+		}
+		if got := req.URL.Query().Get("arr_iata"); got != "LAX" {
+			t.Fatalf("expected arr_iata=LAX, got %q", got)
+		}
+	}, func(w http.ResponseWriter, req *http.Request) {
+		fmt.Fprint(w, `{"data":[{"flight_status":"active","departure":{"iata":"JFK","timezone":"America/New_York","scheduled":"2026-03-13T10:00:00+00:00","estimated":"2026-03-13T10:15:00+00:00"},"arrival":{"iata":"LAX","timezone":"America/Los_Angeles","scheduled":"2026-03-13T13:00:00+00:00","estimated":"2026-03-13T13:20:00+00:00"},"airline":{"name":"Delta Air Lines"},"flight":{"iata":"DL200"},"live":{"latitude":40.7128,"longitude":-73.9352,"altitude":10515.6,"speed_horizontal":828.9}}]}`)
+	})
+
+	flights, err := provider.SearchFlights(context.Background(), "JFK", "LAX")
+	if err != nil {
+		t.Fatalf("SearchFlights returned error: %v", err)
+	}
+	if len(flights) != 1 {
+		t.Fatalf("expected one flight, got %d", len(flights))
+	}
+
+	flight := flights[0]
+	if flight.FlightNumber != "DL200" {
+		t.Fatalf("unexpected flight number %q", flight.FlightNumber)
+	}
+	if flight.DepartureTime.IsZero() || flight.ArrivalTime.IsZero() {
+		t.Fatalf("expected departure and arrival times to be populated: %#v", flight)
+	}
+	if flight.Latitude == 0 || flight.Longitude == 0 || flight.Altitude == 0 || flight.Speed == 0 {
+		t.Fatalf("expected live telemetry to be populated: %#v", flight)
+	}
+}
+
+func TestNormalizeFlightWindowRollsArrivalForwardWhenNeeded(t *testing.T) {
+	departureLoc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("load departure location: %v", err)
+	}
+	arrivalLoc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("load arrival location: %v", err)
+	}
+
+	departure := time.Date(2026, time.April, 5, 19, 51, 0, 0, departureLoc)
+	arrival := time.Date(2026, time.April, 4, 22, 8, 0, 0, arrivalLoc)
+
+	normalizedDeparture, normalizedArrival := normalizeFlightWindow(departure, arrival)
+	if !normalizedArrival.After(normalizedDeparture) {
+		t.Fatalf("expected normalized arrival to be after departure: departure=%v arrival=%v", normalizedDeparture, normalizedArrival)
+	}
+
+	expectedArrival := time.Date(2026, time.April, 5, 22, 8, 0, 0, arrivalLoc)
+	if !normalizedArrival.Equal(expectedArrival) {
+		t.Fatalf("expected arrival to roll forward to %v, got %v", expectedArrival, normalizedArrival)
+	}
+}
+
+func TestNormalizeFlightWindowPreservesWallClockAcrossDST(t *testing.T) {
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+
+	departure := time.Date(2026, time.March, 8, 21, 0, 0, 0, loc)
+	arrival := time.Date(2026, time.March, 7, 22, 8, 0, 0, loc)
+
+	_, normalizedArrival := normalizeFlightWindow(departure, arrival)
+	expectedArrival := time.Date(2026, time.March, 8, 22, 8, 0, 0, loc)
+	if !normalizedArrival.Equal(expectedArrival) {
+		t.Fatalf("expected DST-normalized arrival to be %v, got %v", expectedArrival, normalizedArrival)
 	}
 }

@@ -115,13 +115,114 @@ func TestPrintSearchResultsUsesSharedRowFormatting(t *testing.T) {
 				Airline:       "Delta Airlines",
 				Origin:        "JFK",
 				Destination:   "LAX",
-				Status:        "Scheduled",
-				ScheduledTime: time.Date(2026, time.March, 14, 16, 45, 0, 0, time.UTC),
+				Status:        "In Flight",
+				Latitude:      40.7,
+				Longitude:     -73.9,
+				Altitude:      35000,
+				Speed:         510,
+				DepartureTime: time.Date(2026, time.March, 14, 16, 45, 0, 0, time.UTC),
+				ArrivalTime:   time.Date(2026, time.March, 14, 20, 30, 0, 0, time.UTC),
 			},
 		}, "JFK", "LAX")
 	})
 
-	for _, part := range []string{"Flights from JFK to LAX", "JFK -> LAX", "Scheduled", "16:45"} {
+	for _, part := range []string{"Flights from JFK to LAX", "Departure:", "Arrival:", "Location:", "Altitude:", "Speed:"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("search output %q missing %q", output, part)
+		}
+	}
+}
+
+func TestFlightStatusLinesIncludesElapsedAndRemaining(t *testing.T) {
+	departure := time.Date(2026, time.April, 1, 8, 0, 0, 0, time.UTC)
+	arrival := time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC)
+
+	lines := FlightStatusLines(&models.Flight{
+		FlightNumber:  "AA100",
+		Airline:       "American Airlines",
+		Departure:     "JFK",
+		Arrival:       "LAX",
+		Status:        "In Flight",
+		DepartureTime: departure,
+		ArrivalTime:   arrival,
+	}, departure.Add(90*time.Minute))
+
+	output := strings.Join(lines, "\n")
+	for _, part := range []string{"Flight Time: 3h 0m", "Time Elapsed: 1h 30m", "Time to Destination: 1h 30m"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("flight lines %q missing %q", output, part)
+		}
+	}
+}
+
+func TestSearchFlightLinesIncludeRestoredMetrics(t *testing.T) {
+	lines := SearchFlightLines(models.AirportFlight{
+		FlightNumber:  "DL200",
+		Airline:       "Delta Airlines",
+		Origin:        "JFK",
+		Destination:   "LAX",
+		Status:        "In Flight",
+		Latitude:      40.7128,
+		Longitude:     -73.9352,
+		Altitude:      34500,
+		Speed:         515,
+		DepartureTime: time.Date(2026, time.April, 1, 8, 0, 0, 0, time.UTC),
+		ArrivalTime:   time.Date(2026, time.April, 1, 11, 0, 0, 0, time.UTC),
+	})
+
+	output := strings.Join(lines, "\n")
+	for _, part := range []string{"Departure:", "Arrival:", "Location:", "Altitude:", "Speed:"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("search lines %q missing %q", output, part)
+		}
+	}
+}
+
+func TestSearchFlightLinesIncludeZeroTelemetryWhenLocationExists(t *testing.T) {
+	lines := SearchFlightLines(models.AirportFlight{
+		FlightNumber: "DL201",
+		Airline:      "Delta Airlines",
+		Origin:       "JFK",
+		Destination:  "LAX",
+		Status:       "In Flight",
+		Latitude:     40.7128,
+		Longitude:    -73.9352,
+		Altitude:     0,
+		Speed:        0,
+	})
+
+	output := strings.Join(lines, "\n")
+	for _, part := range []string{"Location:", "Altitude:  0 ft", "Speed:     0 mph"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("search lines %q missing %q", output, part)
+		}
+	}
+}
+
+func TestPrintSearchResultsIncludeZeroTelemetryWhenLocationExists(t *testing.T) {
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	t.Cleanup(func() {
+		color.NoColor = originalNoColor
+	})
+
+	output := captureStdout(t, func() {
+		PrintSearchResults([]models.AirportFlight{
+			{
+				FlightNumber: "DL201",
+				Airline:      "Delta Airlines",
+				Origin:       "JFK",
+				Destination:  "LAX",
+				Status:       "In Flight",
+				Latitude:     40.7128,
+				Longitude:    -73.9352,
+				Altitude:     0,
+				Speed:        0,
+			},
+		}, "JFK", "LAX")
+	})
+
+	for _, part := range []string{"Location:", "Altitude:", "0 ft", "Speed:", "0 mph"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("search output %q missing %q", output, part)
 		}
