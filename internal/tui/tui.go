@@ -110,6 +110,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.err = ""
+		m.commandInput = ""
 		m.lastQuery = msg.query
 		m.lastCached = msg.cached
 		m.flight = msg.flight
@@ -184,7 +185,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.activeRequest++
 		m.loading = true
-		m.commandInput = ""
 		m.statusMessage = loadingMessage(q)
 		return m, m.startRequest(q)
 	default:

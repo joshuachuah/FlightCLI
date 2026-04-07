@@ -174,11 +174,67 @@ func TestHomeSlashCommandStartsRequest(t *testing.T) {
 	if !next.loading {
 		t.Fatalf("expected slash command to put model in loading state")
 	}
-	if next.commandInput != "" {
-		t.Fatalf("expected command input to clear after submit, got %q", next.commandInput)
+	if next.commandInput != "/search JFK LAX" {
+		t.Fatalf("expected command input to stay available while loading, got %q", next.commandInput)
 	}
 	if next.statusMessage != "Searching route..." {
 		t.Fatalf("unexpected status message %q", next.statusMessage)
+	}
+}
+
+func TestHomeSlashCommandCanRetryAfterLoadingCancel(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.commandInput = "/track AA100"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatalf("expected command to start request")
+	}
+
+	loading := updated.(model)
+	canceled, cmd := loading.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatalf("expected canceling loading request not to return a command")
+	}
+
+	afterCancel := canceled.(model)
+	if afterCancel.loading {
+		t.Fatalf("expected loading to be false after cancel")
+	}
+	if afterCancel.commandInput != "/track AA100" {
+		t.Fatalf("expected command input to be preserved after cancel, got %q", afterCancel.commandInput)
+	}
+
+	retried, cmd := afterCancel.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatalf("expected preserved command to retry request")
+	}
+	if !retried.(model).loading {
+		t.Fatalf("expected retry to put model back in loading state")
+	}
+}
+
+func TestHomeSlashCommandClearsAfterSuccessfulResult(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.commandInput = "/track AA100"
+	m.loading = true
+	m.activeRequest = 1
+
+	updated, cmd := m.Update(resultPayload{
+		requestID: 1,
+		query:     query{kind: queryFlight, flight: "AA100"},
+		flight:    &models.Flight{FlightNumber: "AA100"},
+	})
+	if cmd != nil {
+		t.Fatalf("expected successful result not to return a command")
+	}
+
+	next := updated.(model)
+	if next.commandInput != "" {
+		t.Fatalf("expected command input to clear after successful result, got %q", next.commandInput)
+	}
+	if next.screen != screenResult {
+		t.Fatalf("expected successful result to show result screen, got %v", next.screen)
 	}
 }
 
