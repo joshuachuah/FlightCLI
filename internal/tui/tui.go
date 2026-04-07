@@ -57,6 +57,7 @@ type model struct {
 	height        int
 	cursor        int
 	focus         int
+	commandInput  string
 	inputs        []string
 	loading       bool
 	activeRequest int
@@ -71,20 +72,6 @@ type model struct {
 	statusMessage string
 }
 
-var homeItems = []string{
-	"Track flight",
-	"Airport board",
-	"Route search",
-	"Quit",
-}
-
-const homeBanner = `███████╗██╗     ██╗ ██████╗ ██╗  ██╗████████╗ ██████╗██╗     ██╗
-██╔════╝██║     ██║██╔════╝ ██║  ██║╚══██╔══╝██╔════╝██║     ██║
-█████╗  ██║     ██║██║  ███╗███████║   ██║   ██║     ██║     ██║
-██╔══╝  ██║     ██║██║   ██║██╔══██║   ██║   ██║     ██║     ██║
-██║     ███████╗██║╚██████╔╝██║  ██║   ██║   ╚██████╗███████╗██║
-╚═╝     ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝    ╚═════╝╚══════╝╚═╝`
-
 func Launch(ctx context.Context, svc service.FlightService) error {
 	p := tea.NewProgram(initialModel(ctx, svc), tea.WithAltScreen(), tea.WithContext(ctx))
 	_, err := p.Run()
@@ -97,7 +84,7 @@ func initialModel(ctx context.Context, svc service.FlightService) model {
 		service:       svc,
 		screen:        screenHome,
 		inputs:        []string{"", "", ""},
-		statusMessage: "Use arrow keys to move, Enter to select, q to quit.",
+		statusMessage: "Type /help for commands. Press q to quit.",
 	}
 }
 
@@ -157,7 +144,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "q":
-			if m.screen == screenHome || m.screen == screenResult {
+			if m.screen == screenResult || (m.screen == screenHome && m.commandInput == "") {
 				return m, tea.Quit
 			}
 		}
@@ -177,31 +164,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "up", "k":
-		if m.cursor > 0 {
-			m.cursor--
-		}
-	case "down", "j":
-		if m.cursor < len(homeItems)-1 {
-			m.cursor++
+	case "backspace":
+		if m.commandInput != "" {
+			m.commandInput = m.commandInput[:len(m.commandInput)-1]
 		}
 	case "enter":
 		m.err = ""
-		m.inputs = []string{"", "", ""}
-		m.focus = 0
-		switch m.cursor {
-		case 0:
-			m.screen = screenFlightForm
-			m.statusMessage = "Enter a flight number like AA100, then press Enter."
-		case 1:
-			m.screen = screenAirportForm
-			m.inputs[1] = "departures"
-			m.statusMessage = "Enter an airport code, then choose departures or arrivals."
-		case 2:
-			m.screen = screenSearchForm
-			m.statusMessage = "Enter two airport codes to search a route."
-		default:
+		q, done, err := parseSlashCommand(m.commandInput)
+		if err != nil {
+			m.err = err.Error()
+			return m, nil
+		}
+		if done {
 			return m, tea.Quit
+		}
+		if q.kind == queryNone {
+			m.statusMessage = "Type /track [flightNumber], /airport [airport] [departures/arrivals], or /search [airport1] [airport2]. /airport defaults to departures."
+			return m, nil
+		}
+		m.activeRequest++
+		m.loading = true
+		m.commandInput = ""
+		m.statusMessage = loadingMessage(q)
+		return m, m.startRequest(q)
+	default:
+		if len(msg.Runes) > 0 && !msg.Alt {
+			m.commandInput += string(msg.Runes)
 		}
 	}
 	return m, nil
@@ -212,7 +200,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = screenHome
 		m.err = ""
-		m.statusMessage = "Use arrow keys to move, Enter to select, q to quit."
+		m.statusMessage = "Type /help for commands. Press q to quit."
 		return m, nil
 	case "tab", "shift+tab", "up", "down":
 		m.moveFocus(msg.String())
@@ -284,7 +272,7 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = screenHome
 		m.err = ""
-		m.statusMessage = "Use arrow keys to move, Enter to select, q to quit."
+		m.statusMessage = "Type /help for commands. Press q to quit."
 	case "r":
 		if m.lastQuery.kind == queryNone {
 			return m, nil
@@ -348,12 +336,70 @@ func fetchQueryCmd(ctx context.Context, cancel context.CancelFunc, svc service.F
 	}
 }
 
+func parseSlashCommand(input string) (query, bool, error) {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return query{}, false, nil
+	}
+	if !strings.HasPrefix(trimmed, "/") {
+		return query{}, false, fmt.Errorf("commands must start with /")
+	}
+
+	fields := strings.Fields(trimmed)
+	command := strings.ToLower(strings.TrimPrefix(fields[0], "/"))
+	args := fields[1:]
+
+	switch command {
+	case "track", "flight", "status":
+		if len(args) != 1 {
+			return query{}, false, fmt.Errorf("usage: /track AA100")
+		}
+		return query{kind: queryFlight, flight: args[0]}, false, nil
+	case "airport", "board":
+		if len(args) < 1 || len(args) > 2 {
+			return query{}, false, fmt.Errorf("usage: /airport JFK departures")
+		}
+		flightType := "departures"
+		if len(args) == 2 {
+			flightType = strings.ToLower(args[1])
+		}
+		if flightType != "departures" && flightType != "arrivals" {
+			return query{}, false, fmt.Errorf("airport board type must be departures or arrivals")
+		}
+		return query{kind: queryAirport, airport: args[0], flightType: flightType}, false, nil
+	case "search", "route":
+		if len(args) != 2 {
+			return query{}, false, fmt.Errorf("usage: /search JFK LAX")
+		}
+		return query{kind: querySearch, from: args[0], to: args[1]}, false, nil
+	case "help":
+		return query{}, false, nil
+	case "quit", "exit":
+		return query{}, true, nil
+	default:
+		return query{}, false, fmt.Errorf("unknown command %q", fields[0])
+	}
+}
+
+func loadingMessage(q query) string {
+	switch q.kind {
+	case queryFlight:
+		return "Fetching flight status..."
+	case queryAirport:
+		return "Fetching airport board..."
+	case querySearch:
+		return "Searching route..."
+	default:
+		return "Loading..."
+	}
+}
+
 func (m model) View() string {
 	switch {
 	case m.loading:
-		return m.renderFrame("Loading", m.statusMessage+"\n\nPlease wait...")
+		return m.renderFrame("Loading", "Please wait...")
 	case m.screen == screenHome:
-		return m.renderFrame("FlightCLI", m.viewHome())
+		return m.renderFrame("", m.viewHome())
 	case m.screen == screenFlightForm:
 		return m.renderFrame("Track Flight", m.viewFlightForm())
 	case m.screen == screenAirportForm:
@@ -390,18 +436,16 @@ func (m model) renderFrame(title, body string) string {
 
 func (m model) viewHome() string {
 	var b strings.Builder
-	b.WriteString(homeBanner)
-	b.WriteString("\n\n")
-	b.WriteString("Choose an action:\n\n")
-	for i, item := range homeItems {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = "> "
-		}
-		b.WriteString(cursor)
-		b.WriteString(item)
-		b.WriteString("\n")
-	}
+	b.WriteString("Command:\n")
+	b.WriteString("> ")
+	b.WriteString(m.commandInput)
+	b.WriteString("_\n\n")
+	b.WriteString("Commands:\n")
+	b.WriteString("  /track [flightNumber]\n")
+	b.WriteString("  /airport [airport] [departures]\n")
+	b.WriteString("  /airport [airport] [arrivals]\n")
+	b.WriteString("  /search [airport1] [airport2]\n")
+	b.WriteString("  /quit\n")
 	return b.String()
 }
 

@@ -101,14 +101,113 @@ func TestTrimForWidth(t *testing.T) {
 	}
 }
 
-func TestViewHomeIncludesBanner(t *testing.T) {
+func TestViewHomeShowsSlashCommandsWithoutTitle(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
-	output := m.viewHome()
+	output := m.View()
 
-	for _, part := range []string{"███████╗██╗", "Choose an action:"} {
+	for _, part := range []string{"Command:", "/track [flightNumber]", "/airport [airport] [departures]", "/search [airport1] [airport2]"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("home view %q missing %q", output, part)
 		}
+	}
+	for _, part := range []string{"FlightCLI\n============", "Choose an action:"} {
+		if strings.Contains(output, part) {
+			t.Fatalf("home view %q should not contain %q", output, part)
+		}
+	}
+}
+
+func TestParseSlashCommand(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  query
+	}{
+		{
+			name:  "track",
+			input: "/track AA100",
+			want:  query{kind: queryFlight, flight: "AA100"},
+		},
+		{
+			name:  "airport defaults to departures",
+			input: "/airport JFK",
+			want:  query{kind: queryAirport, airport: "JFK", flightType: "departures"},
+		},
+		{
+			name:  "airport arrivals",
+			input: "/airport JFK arrivals",
+			want:  query{kind: queryAirport, airport: "JFK", flightType: "arrivals"},
+		},
+		{
+			name:  "search",
+			input: "/search JFK LAX",
+			want:  query{kind: querySearch, from: "JFK", to: "LAX"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, done, err := parseSlashCommand(tt.input)
+			if err != nil {
+				t.Fatalf("parseSlashCommand returned error: %v", err)
+			}
+			if done {
+				t.Fatalf("parseSlashCommand returned done=true")
+			}
+			if got != tt.want {
+				t.Fatalf("parseSlashCommand returned %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHomeSlashCommandStartsRequest(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.commandInput = "/search JFK LAX"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatalf("expected command to start request")
+	}
+
+	next := updated.(model)
+	if !next.loading {
+		t.Fatalf("expected slash command to put model in loading state")
+	}
+	if next.commandInput != "" {
+		t.Fatalf("expected command input to clear after submit, got %q", next.commandInput)
+	}
+	if next.statusMessage != "Searching route..." {
+		t.Fatalf("unexpected status message %q", next.statusMessage)
+	}
+}
+
+func TestLoadingViewShowsStatusOnce(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.loading = true
+	m.statusMessage = "Fetching flight status..."
+
+	output := m.View()
+	if count := strings.Count(output, "Fetching flight status..."); count != 1 {
+		t.Fatalf("expected loading status once, got %d in %q", count, output)
+	}
+	if !strings.Contains(output, "Please wait...") {
+		t.Fatalf("expected loading view to include wait message, got %q", output)
+	}
+}
+
+func TestQCanBeTypedInsideSlashCommand(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.commandInput = "/"
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil {
+		t.Fatalf("expected q in command input not to quit")
+	}
+
+	next := updated.(model)
+	if next.commandInput != "/q" {
+		t.Fatalf("expected q to be captured in command input, got %q", next.commandInput)
 	}
 }
 
