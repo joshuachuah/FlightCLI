@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -180,7 +181,8 @@ func (a *AviationStackProvider) fetchFlights(ctx context.Context, params url.Val
 	}
 
 	var data aviationStackResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	body := io.LimitReader(resp.Body, 10<<20)
+	if err := json.NewDecoder(body).Decode(&data); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
