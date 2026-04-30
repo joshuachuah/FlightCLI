@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/xjosh/flightcli/internal/display"
@@ -578,13 +579,14 @@ func formatSearchResults(flights []models.AirportFlight) string {
 }
 
 func trimForWidth(s string, width int) string {
-	if len(s) <= width {
+	if utf8.RuneCountInString(s) <= width {
 		return s
 	}
+	runes := []rune(s)
 	if width <= 3 {
-		return s[:width]
+		return string(runes[:width])
 	}
-	return s[:width-3] + "..."
+	return string(runes[:width-3]) + "..."
 }
 
 func capitalize(s string) string {
