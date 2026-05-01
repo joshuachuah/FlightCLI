@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -72,6 +73,8 @@ type model struct {
 	activeTitle   string
 	statusMessage string
 }
+
+var airportCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 func Launch(ctx context.Context, svc service.FlightService) error {
 	p := tea.NewProgram(initialModel(ctx, svc), tea.WithAltScreen(), tea.WithContext(ctx))
@@ -231,6 +234,10 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = "Airport code is required."
 				return m, nil
 			}
+			if !airportCodePattern.MatchString(strings.ToUpper(code)) {
+				m.err = "Invalid airport code: use a 3-letter IATA code."
+				return m, nil
+			}
 			if flightType == "" {
 				flightType = "departures"
 			}
@@ -248,6 +255,14 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			if q.from == "" || q.to == "" {
 				m.err = "Both airport codes are required."
+				return m, nil
+			}
+			if !airportCodePattern.MatchString(strings.ToUpper(q.from)) {
+				m.err = "Invalid airport code: use a 3-letter IATA code."
+				return m, nil
+			}
+			if !airportCodePattern.MatchString(strings.ToUpper(q.to)) {
+				m.err = "Invalid airport code: use a 3-letter IATA code."
 				return m, nil
 			}
 			m.activeRequest++
@@ -367,12 +382,23 @@ func parseSlashCommand(input string) (query, bool, error) {
 		if flightType != "departures" && flightType != "arrivals" {
 			return query{}, false, fmt.Errorf("airport board type must be departures or arrivals")
 		}
-		return query{kind: queryAirport, airport: args[0], flightType: flightType}, false, nil
+		q := query{kind: queryAirport, airport: args[0], flightType: flightType}
+		if !airportCodePattern.MatchString(strings.ToUpper(q.airport)) {
+			return query{}, false, fmt.Errorf("invalid airport code %q: use a 3-letter IATA code", q.airport)
+		}
+		return q, false, nil
 	case "search", "route":
 		if len(args) != 2 {
 			return query{}, false, fmt.Errorf("usage: /search JFK LAX")
 		}
-		return query{kind: querySearch, from: args[0], to: args[1]}, false, nil
+		q := query{kind: querySearch, from: args[0], to: args[1]}
+		if !airportCodePattern.MatchString(strings.ToUpper(q.from)) {
+			return query{}, false, fmt.Errorf("invalid airport code %q: use a 3-letter IATA code", q.from)
+		}
+		if !airportCodePattern.MatchString(strings.ToUpper(q.to)) {
+			return query{}, false, fmt.Errorf("invalid airport code %q: use a 3-letter IATA code", q.to)
+		}
+		return q, false, nil
 	case "help":
 		return query{}, false, nil
 	case "quit", "exit":
