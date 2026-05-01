@@ -35,15 +35,30 @@ func (m model) View() string {
 	content := m.renderContent()
 	inputBar := m.renderInputBar()
 
-	// Truncate/pad content to exact height
+	// Apply scroll offset and clip content to visible area
 	contentLines := strings.Split(content, "\n")
-	if len(contentLines) > contentHeight {
-		// Show the bottom (most recent) content
-		contentLines = contentLines[len(contentLines)-contentHeight:]
+	maxScroll := len(contentLines) - contentHeight
+	if maxScroll < 0 {
+		maxScroll = 0
 	}
-	contentStr := strings.Join(contentLines, "\n")
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
+	}
+	if m.scrollOffset > maxScroll {
+		m.scrollOffset = maxScroll
+	}
+
+	// Slice content based on scroll offset
+	start := m.scrollOffset
+	end := start + contentHeight
+	if end > len(contentLines) {
+		end = len(contentLines)
+	}
+	visibleLines := contentLines[start:end]
+
 	// Pad to fill content area
-	linesNeeded := contentHeight - len(contentLines)
+	contentStr := strings.Join(visibleLines, "\n")
+	linesNeeded := contentHeight - len(visibleLines)
 	if linesNeeded > 0 {
 		contentStr += strings.Repeat("\n", linesNeeded)
 	}
@@ -94,6 +109,8 @@ func (m model) renderContent() string {
 		return m.viewSearchForm()
 	case m.screen == screenResult:
 		return m.viewResult()
+	case m.screen == screenHelp:
+		return m.viewHelp()
 	default:
 		return ""
 	}
@@ -129,6 +146,8 @@ func (m model) renderInputBar() string {
 		// Keymap line
 		keymap := renderKeymap([]keyHint{
 			{"enter", "run"},
+			{"t/a/s/?", "shortcuts"},
+			{"tab", "complete"},
 			{"esc", "quit"},
 		})
 		keymapPadding := width - lipgloss.Width(keymap)
@@ -147,8 +166,13 @@ func (m model) renderInputBar() string {
 	if m.screen == screenResult {
 		keymapText = renderKeymap([]keyHint{
 			{"r", "refresh"},
+			{"↑↓", "scroll"},
 			{"esc", "back"},
 			{"q", "quit"},
+		})
+	} else if m.screen == screenHelp {
+		keymapText = renderKeymap([]keyHint{
+			{"esc/any", "back"},
 		})
 	} else {
 		keymapText = renderKeymap([]keyHint{
@@ -203,23 +227,112 @@ func (m model) viewHome() string {
 
 	// Command menu
 	commands := []struct {
-		cmd  string
-		desc string
+		cmd      string
+		desc     string
+		shortcut string
 	}{
-		{"/track AA100", "Track a flight by number"},
-		{"/airport JFK departures", "Show airport board"},
-		{"/search JFK LAX", "Search routes between airports"},
-		{"/help", "Show help"},
-		{"/quit", "Exit"},
+		{"/track AA100", "Track a flight by number", "t"},
+		{"/airport JFK departures", "Show airport board", "a"},
+		{"/search JFK LAX", "Search routes between airports", "s"},
+		{"/help", "Show help", "?"},
+		{"/quit", "Exit", ""},
 	}
 
 	for _, c := range commands {
 		b.WriteString("  ")
 		b.WriteString(keyStyle.Render(c.cmd))
+		available := m.width - lipgloss.Width("  ") - lipgloss.Width(c.cmd) - lipgloss.Width("  ")
+		if c.shortcut != "" {
+			available -= lipgloss.Width("  (" + c.shortcut + ")")
+		}
+		if lipgloss.Width(c.desc) <= available {
+			b.WriteString("  ")
+			b.WriteString(keyDescStyle.Render(c.desc))
+		} else {
+			b.WriteString("\n    ")
+			available = m.width - lipgloss.Width("    ")
+			if c.shortcut != "" {
+				available -= lipgloss.Width("  (" + c.shortcut + ")")
+			}
+			if available < 1 {
+				available = 1
+			}
+			b.WriteString(keyDescStyle.Render(trimForWidth(c.desc, available)))
+		}
+		if c.shortcut != "" {
+			b.WriteString("  ")
+			b.WriteString(keyDescStyle.Render("(" + c.shortcut + ")"))
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String()
+}
+
+// ── Help Screen ─────────────────────────────────────────────
+
+func (m model) viewHelp() string {
+	var b strings.Builder
+
+	b.WriteString(headerStyle.Render("  FlightCLI Help"))
+	b.WriteString("\n\n")
+
+	// Slash commands
+	b.WriteString("  ")
+	b.WriteString(keyStyle.Render("Commands:"))
+	b.WriteString("\n")
+
+	commands := []struct {
+		cmd  string
+		desc string
+	}{
+		{"/track [flight]", "Track a flight by number"},
+		{"/airport [code]", "Show airport board (departures/arrivals)"},
+		{"/search [from] [to]", "Search routes between airports"},
+		{"/help", "Show this help screen"},
+		{"/quit", "Exit FlightCLI"},
+	}
+
+	for _, c := range commands {
+		b.WriteString("    ")
+		b.WriteString(keyStyle.Render(c.cmd))
 		b.WriteString("  ")
 		b.WriteString(keyDescStyle.Render(c.desc))
 		b.WriteString("\n")
 	}
+
+	b.WriteString("\n")
+
+	// Keyboard shortcuts
+	b.WriteString("  ")
+	b.WriteString(keyStyle.Render("Keyboard Shortcuts:"))
+	b.WriteString("\n")
+
+	shortcuts := []struct {
+		key  string
+		desc string
+	}{
+		{"t", "Track a flight (flight form)"},
+		{"a", "Airport board (airport form)"},
+		{"s", "Search routes (search form)"},
+		{"?", "Show this help screen"},
+		{"esc", "Go back / cancel"},
+		{"q", "Quit"},
+		{"enter", "Submit command or form"},
+		{"tab", "Next field / complete command"},
+		{"↑↓", "Scroll results / history"},
+	}
+
+	for _, s := range shortcuts {
+		b.WriteString("    ")
+		b.WriteString(keyStyle.Render(s.key))
+		b.WriteString("  ")
+		b.WriteString(keyDescStyle.Render(s.desc))
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(labelStyle.Render("  Real-time flight tracking from your terminal"))
 
 	return b.String()
 }
@@ -321,7 +434,7 @@ func (m model) viewResult() string {
 	} else if m.lastQuery.kind == querySearch {
 		content = formatSearchResults(m.flights)
 	} else {
-		content = formatBoard(m.flights)
+		content = formatBoardForWidth(m.flights, m.width)
 	}
 
 	b.WriteString(panelStyle.Render(content))
@@ -337,23 +450,64 @@ func formatFlightAt(flight *models.Flight, now time.Time) string {
 }
 
 func formatBoard(flights []models.AirportFlight) string {
+	return formatBoardForWidth(flights, 80)
+}
+
+func formatBoardForWidth(flights []models.AirportFlight, width int) string {
 	if len(flights) == 0 {
 		return "No flights found."
 	}
 
+	if width <= 0 {
+		width = 80
+	}
+
+	// Header row
+	var header string
+	switch {
+	case width >= 80:
+		header = tableHeaderStyle.Render(fmt.Sprintf("%-8s %-22s %-11s %-10s %s",
+			"FLIGHT", "AIRLINE", "ROUTE", "STATUS", "TIME"))
+	case width >= 60:
+		header = tableHeaderStyle.Render(fmt.Sprintf("%-8s %-11s %-10s %s",
+			"FLIGHT", "ROUTE", "STATUS", "TIME"))
+	default:
+		header = tableHeaderStyle.Render(fmt.Sprintf("%-8s %-11s %s",
+			"FLIGHT", "ROUTE", "STATUS"))
+	}
+
 	var lines []string
+	lines = append(lines, header)
 	for _, f := range flights {
 		scheduled := ""
 		if !f.ScheduledTime.IsZero() {
 			scheduled = f.ScheduledTime.Format("15:04")
 		}
-		lines = append(lines, fmt.Sprintf("%-8s %-22s %-11s %-10s %s",
-			f.FlightNumber,
-			trimForWidth(f.Airline, 22),
-			f.Origin+"->"+f.Destination,
-			trimForWidth(f.Status, 10),
-			scheduled,
-		))
+		statusStyled := statusStyleForFlight(f.Status).Render(trimForWidth(f.Status, 10))
+		route := f.Origin + "->" + f.Destination
+		switch {
+		case width >= 80:
+			lines = append(lines, fmt.Sprintf("%-8s %-22s %-11s %-10s %s",
+				f.FlightNumber,
+				trimForWidth(f.Airline, 22),
+				route,
+				statusStyled,
+				scheduled,
+			))
+		case width >= 60:
+			lines = append(lines, fmt.Sprintf("%-8s %-11s %-10s %s",
+				f.FlightNumber,
+				route,
+				statusStyled,
+				scheduled,
+			))
+		default:
+			lines = append(lines, fmt.Sprintf("%-8s %-11s %s",
+				f.FlightNumber,
+				route,
+				statusStyled,
+			))
+		}
 	}
 	return strings.Join(lines, "\n")
 }
@@ -420,7 +574,7 @@ func parseSlashCommand(input string) (query, bool, error) {
 		}
 		return q, false, nil
 	case "help":
-		return query{}, false, nil
+		return query{kind: queryHelp}, false, nil
 	case "quit", "exit":
 		return query{}, true, nil
 	default:
