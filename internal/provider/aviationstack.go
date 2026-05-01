@@ -245,7 +245,16 @@ func bestFlight(flights []aviationStackFlight) aviationStackFlight {
 
 func effectiveFlightStatus(f aviationStackFlight) string {
 	status := strings.ToLower(strings.TrimSpace(f.FlightStatus))
-	if status == "scheduled" && f.Live != nil {
+
+	// If the API says "active" but there's no actual departure time and no
+	// live tracking data, the flight likely hasn't taken off yet.
+	// AviationStack marks flights as "active" near scheduled departure even
+	// if the plane is still at the gate — downgrade to "scheduled".
+	if status == "active" && f.Departure.Actual == "" && f.Live == nil {
+		return "scheduled"
+	}
+
+	if status == "scheduled" && f.Live != nil && !f.Live.IsGround {
 		return "active"
 	}
 	return status
