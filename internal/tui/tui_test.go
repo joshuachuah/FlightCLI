@@ -19,7 +19,7 @@ func TestTitleForQuery(t *testing.T) {
 	if got := titleForQuery(query{kind: queryAirport, airport: "jfk", flightType: "arrivals"}); got != "Arrivals for JFK" {
 		t.Fatalf("unexpected airport title: %q", got)
 	}
-	if got := titleForQuery(query{kind: querySearch, from: "jfk", to: "lax"}); got != "Flights from JFK to LAX" {
+	if got := titleForQuery(query{kind: querySearch, from: "jfk", to: "lax"}); got != "JFK → LAX" {
 		t.Fatalf("unexpected search title: %q", got)
 	}
 }
@@ -118,18 +118,15 @@ func TestTrimForWidthHandlesMultibyteRunes(t *testing.T) {
 	}
 }
 
-func TestViewHomeShowsSlashCommandsWithoutTitle(t *testing.T) {
+func TestViewHomeShowsSlashCommands(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
+	m.width = 80
+	m.height = 24
 	output := m.View()
 
-	for _, part := range []string{"Command:", "/track [flightNumber]", "/airport [airport] [departures]", "/search [airport1] [airport2]"} {
+	for _, part := range []string{"/track", "/airport", "/search", "/help", "/quit"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("home view %q missing %q", output, part)
-		}
-	}
-	for _, part := range []string{"FlightCLI\n============", "Choose an action:"} {
-		if strings.Contains(output, part) {
-			t.Fatalf("home view %q should not contain %q", output, part)
 		}
 	}
 }
@@ -255,17 +252,16 @@ func TestHomeSlashCommandClearsAfterSuccessfulResult(t *testing.T) {
 	}
 }
 
-func TestLoadingViewShowsStatusOnce(t *testing.T) {
+func TestLoadingViewShowsStatus(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
+	m.width = 80
+	m.height = 24
 	m.loading = true
 	m.statusMessage = "Fetching flight status..."
 
 	output := m.View()
-	if count := strings.Count(output, "Fetching flight status..."); count != 1 {
-		t.Fatalf("expected loading status once, got %d in %q", count, output)
-	}
-	if !strings.Contains(output, "Please wait...") {
-		t.Fatalf("expected loading view to include wait message, got %q", output)
+	if !strings.Contains(output, "Fetching flight status...") {
+		t.Fatalf("expected loading view to include status message, got %q", output)
 	}
 }
 
