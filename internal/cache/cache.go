@@ -66,6 +66,44 @@ func (c *Cache) Get(key string) (json.RawMessage, bool, error) {
 	return e.Data, true, nil
 }
 
+// Cleanup removes all expired cache entries from disk.
+// It returns the number of entries removed and any error encountered
+// while reading the cache directory. Individual file removal errors
+// are not reported — only directory-level errors are.
+func (c *Cache) Cleanup() (int, error) {
+	entries, err := os.ReadDir(c.Dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("reading cache directory: %w", err)
+	}
+
+	removed := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		path := filepath.Join(c.Dir, e.Name())
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var ent entry
+		if err := json.Unmarshal(raw, &ent); err != nil {
+			// Corrupt file — remove it
+			os.Remove(path)
+			removed++
+			continue
+		}
+		if time.Now().After(ent.ExpiresAt) {
+			os.Remove(path)
+			removed++
+		}
+	}
+	return removed, nil
+}
+
 // Set writes a value to cache with the given TTL.
 func (c *Cache) Set(key string, data interface{}, ttl time.Duration) error {
 	raw, err := json.Marshal(data)
