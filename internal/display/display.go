@@ -13,6 +13,7 @@ import (
 	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
 	"github.com/xjosh/flightcli/internal/models"
+	"github.com/xjosh/flightcli/internal/sanitize"
 )
 
 var (
@@ -26,7 +27,7 @@ var (
 
 // StatusColor returns the color style for a given flight status string.
 func StatusColor(status string) *color.Color {
-	switch status {
+	switch sanitize.TerminalString(status) {
 	case "In Flight":
 		return greenStyle
 	case "Landed":
@@ -42,17 +43,23 @@ func StatusColor(status string) *color.Color {
 
 // PrintFlightStatus renders a Flight to stdout with color and labels.
 func PrintFlightStatus(flight *models.Flight) {
+	flightNumber := sanitize.TerminalString(flight.FlightNumber)
+	airline := sanitize.TerminalString(flight.Airline)
+	departure := sanitize.TerminalString(flight.Departure)
+	arrival := sanitize.TerminalString(flight.Arrival)
+	status := sanitize.TerminalString(flight.Status)
+
 	labelStyle.Print("Flight:   ")
-	fmt.Println(flight.FlightNumber)
+	fmt.Println(flightNumber)
 
 	labelStyle.Print("Airline:  ")
-	fmt.Println(flight.Airline)
+	fmt.Println(airline)
 
 	labelStyle.Print("Route:    ")
-	fmt.Printf("%s -> %s\n", flight.Departure, flight.Arrival)
+	fmt.Printf("%s -> %s\n", departure, arrival)
 
 	labelStyle.Print("Status:   ")
-	StatusColor(flight.Status).Println(flight.Status)
+	StatusColor(status).Println(status)
 
 	if !flight.DepartureTime.IsZero() {
 		labelStyle.Print("Departure:")
@@ -95,7 +102,7 @@ func PrintAirportFlights(flights []models.AirportFlight, airportCode string, fli
 
 // PrintSearchResults renders a route search result table.
 func PrintSearchResults(flights []models.AirportFlight, from, to string) {
-	labelStyle.Printf("Flights from %s to %s:\n\n", from, to)
+	labelStyle.Printf("Flights from %s to %s:\n\n", sanitize.TerminalString(from), sanitize.TerminalString(to))
 	if len(flights) == 0 {
 		dimStyle.Println("  No flights found.")
 		return
@@ -116,7 +123,7 @@ func PrintCachedIndicator() {
 
 // DimPrint prints a string in dim/faint style followed by a newline.
 func DimPrint(s string) {
-	dimStyle.Println(s)
+	dimStyle.Println(sanitize.TerminalString(s))
 }
 
 // FormatDuration formats a duration as "Xh Ym" or "Ym".
@@ -138,11 +145,17 @@ func NewSpinner(suffix string) *spinner.Spinner {
 
 // FlightStatusLines returns the plain-text flight summary used by non-colored views.
 func FlightStatusLines(flight *models.Flight, now time.Time) []string {
+	flightNumber := sanitize.TerminalString(flight.FlightNumber)
+	airline := sanitize.TerminalString(flight.Airline)
+	departure := sanitize.TerminalString(flight.Departure)
+	arrival := sanitize.TerminalString(flight.Arrival)
+	status := sanitize.TerminalString(flight.Status)
+
 	lines := []string{
-		"Flight:   " + flight.FlightNumber,
-		"Airline:  " + flight.Airline,
-		fmt.Sprintf("Route:    %s -> %s", flight.Departure, flight.Arrival),
-		"Status:   " + flight.Status,
+		"Flight:   " + flightNumber,
+		"Airline:  " + airline,
+		fmt.Sprintf("Route:    %s -> %s", departure, arrival),
+		"Status:   " + status,
 	}
 
 	if !flight.DepartureTime.IsZero() {
@@ -176,11 +189,17 @@ func FlightStatusLines(flight *models.Flight, now time.Time) []string {
 
 // SearchFlightLines returns the detailed plain-text route-search summary for one flight.
 func SearchFlightLines(flight models.AirportFlight) []string {
+	flightNumber := sanitize.TerminalString(flight.FlightNumber)
+	airline := sanitize.TerminalString(flight.Airline)
+	origin := sanitize.TerminalString(flight.Origin)
+	destination := sanitize.TerminalString(flight.Destination)
+	status := sanitize.TerminalString(flight.Status)
+
 	lines := []string{
-		"Flight:    " + flight.FlightNumber,
-		"Airline:   " + flight.Airline,
-		fmt.Sprintf("Route:     %s -> %s", flight.Origin, flight.Destination),
-		"Status:    " + flight.Status,
+		"Flight:    " + flightNumber,
+		"Airline:   " + airline,
+		fmt.Sprintf("Route:     %s -> %s", origin, destination),
+		"Status:    " + status,
 	}
 
 	if !flight.DepartureTime.IsZero() {
@@ -209,7 +228,7 @@ func airportBoardTitle(airportCode, flightType string) string {
 	case strings.EqualFold(ft, "departures"), strings.EqualFold(ft, "departure"):
 		label = "Departures"
 	}
-	return fmt.Sprintf("%s for %s", label, airportCode)
+	return fmt.Sprintf("%s for %s", label, sanitize.TerminalString(airportCode))
 }
 
 func printAirportFlightTable(flights []models.AirportFlight, title string) {
@@ -229,26 +248,37 @@ func airportFlightRow(f models.AirportFlight) string {
 	if !f.ScheduledTime.IsZero() {
 		timeStr = f.ScheduledTime.Format("15:04")
 	}
-	route := fmt.Sprintf("%s -> %s", f.Origin, f.Destination)
+	flightNumber := sanitize.TerminalString(f.FlightNumber)
+	airline := sanitize.TerminalString(f.Airline)
+	origin := sanitize.TerminalString(f.Origin)
+	destination := sanitize.TerminalString(f.Destination)
+	status := sanitize.TerminalString(f.Status)
+	route := fmt.Sprintf("%s -> %s", origin, destination)
 	// Color is applied to status as a trailing field to avoid ANSI codes
 	// disrupting fixed-width padding on earlier columns.
-	coloredStatus := StatusColor(f.Status).Sprint(f.Status)
+	coloredStatus := StatusColor(status).Sprint(status)
 	return fmt.Sprintf("  %-10s %-25s %-15s %s  %s",
-		f.FlightNumber, f.Airline, route, coloredStatus, timeStr)
+		flightNumber, airline, route, coloredStatus, timeStr)
 }
 
 func printSearchFlight(f models.AirportFlight) {
+	flightNumber := sanitize.TerminalString(f.FlightNumber)
+	airline := sanitize.TerminalString(f.Airline)
+	origin := sanitize.TerminalString(f.Origin)
+	destination := sanitize.TerminalString(f.Destination)
+	status := sanitize.TerminalString(f.Status)
+
 	labelStyle.Print("Flight:    ")
-	fmt.Println(f.FlightNumber)
+	fmt.Println(flightNumber)
 
 	labelStyle.Print("Airline:   ")
-	fmt.Println(f.Airline)
+	fmt.Println(airline)
 
 	labelStyle.Print("Route:     ")
-	fmt.Printf("%s -> %s\n", f.Origin, f.Destination)
+	fmt.Printf("%s -> %s\n", origin, destination)
 
 	labelStyle.Print("Status:    ")
-	StatusColor(f.Status).Println(f.Status)
+	StatusColor(status).Println(status)
 
 	if !f.DepartureTime.IsZero() {
 		labelStyle.Print("Departure:")

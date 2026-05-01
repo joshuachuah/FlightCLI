@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/xjosh/flightcli/internal/display"
 	"github.com/xjosh/flightcli/internal/models"
+	"github.com/xjosh/flightcli/internal/sanitize"
 )
 
 // Layout constants
@@ -80,7 +81,7 @@ func (m model) renderStatusBar() string {
 
 	title := " FlightCLI"
 	if m.activeTitle != "" {
-		title = " " + m.activeTitle
+		title = " " + sanitize.TerminalString(m.activeTitle)
 	}
 
 	rightPart := ""
@@ -127,6 +128,7 @@ func (m model) renderLoading() string {
 	if msg == "" {
 		msg = "Loading..."
 	}
+	msg = sanitize.TerminalString(msg)
 	return "\n\n  " + spinnerStyle.Render(spinner) + "  " + headerStyle.Render(msg)
 }
 
@@ -141,7 +143,7 @@ func (m model) renderInputBar() string {
 
 	// Input line — same across all screens
 	prompt := inputPromptStyle.Render("> ")
-	value := inputTextStyle.Render(m.commandInput)
+	value := inputTextStyle.Render(sanitize.TerminalString(m.commandInput))
 	cursor := inputCursorStyle.Render("▎")
 	inputLine := prompt + value + cursor
 
@@ -187,7 +189,7 @@ func (m model) viewHome() string {
 
 	// Error line
 	if m.err != "" {
-		b.WriteString(errorStyle.Render("  ✗ " + m.err))
+		b.WriteString(errorStyle.Render("  ✗ " + sanitize.TerminalString(m.err)))
 		b.WriteString("\n\n")
 	}
 
@@ -301,7 +303,7 @@ func (m model) renderForm(title string, fields []field) string {
 	b.WriteString("\n\n")
 
 	if m.err != "" {
-		b.WriteString(errorStyle.Render("  ✗ " + m.err))
+		b.WriteString(errorStyle.Render("  ✗ " + sanitize.TerminalString(m.err)))
 		b.WriteString("\n\n")
 	}
 
@@ -316,11 +318,11 @@ func (m model) renderForm(title string, fields []field) string {
 		b.WriteString(labelStyle.Render(f.label + ":"))
 		b.WriteString(" ")
 
-		displayVal := f.value
+		displayVal := sanitize.TerminalString(f.value)
 		if i == m.focus {
-			displayVal = valueStyle.Render(f.value) + inputCursorStyle.Render("▎")
-		} else if f.value != "" {
-			displayVal = valueStyle.Render(f.value)
+			displayVal = valueStyle.Render(displayVal) + inputCursorStyle.Render("▎")
+		} else if displayVal != "" {
+			displayVal = valueStyle.Render(displayVal)
 		}
 		b.WriteString(displayVal)
 		b.WriteString("\n")
@@ -346,7 +348,7 @@ func (m model) viewResult() string {
 
 	// Error
 	if m.err != "" {
-		b.WriteString(errorStyle.Render("  ✗ " + m.err))
+		b.WriteString(errorStyle.Render("  ✗ " + sanitize.TerminalString(m.err)))
 		b.WriteString("\n")
 		return b.String()
 	}
@@ -403,31 +405,36 @@ func formatBoardForWidth(flights []models.AirportFlight, width int) string {
 	var lines []string
 	lines = append(lines, header)
 	for _, f := range flights {
+		flightNumber := sanitize.TerminalString(f.FlightNumber)
+		airline := sanitize.TerminalString(f.Airline)
+		origin := sanitize.TerminalString(f.Origin)
+		destination := sanitize.TerminalString(f.Destination)
+		status := sanitize.TerminalString(f.Status)
 		scheduled := ""
 		if !f.ScheduledTime.IsZero() {
 			scheduled = f.ScheduledTime.Format("15:04")
 		}
-		statusStyled := statusStyleForFlight(f.Status).Render(trimForWidth(f.Status, 10))
-		route := f.Origin + "->" + f.Destination
+		statusStyled := statusStyleForFlight(status).Render(trimForWidth(status, 10))
+		route := origin + "->" + destination
 		switch {
 		case width >= 80:
 			lines = append(lines, fmt.Sprintf("%-8s %-22s %-11s %-10s %s",
-				f.FlightNumber,
-				trimForWidth(f.Airline, 22),
+				flightNumber,
+				trimForWidth(airline, 22),
 				route,
 				statusStyled,
 				scheduled,
 			))
 		case width >= 60:
 			lines = append(lines, fmt.Sprintf("%-8s %-11s %-10s %s",
-				f.FlightNumber,
+				flightNumber,
 				route,
 				statusStyled,
 				scheduled,
 			))
 		default:
 			lines = append(lines, fmt.Sprintf("%-8s %-11s %s",
-				f.FlightNumber,
+				flightNumber,
 				route,
 				statusStyled,
 			))

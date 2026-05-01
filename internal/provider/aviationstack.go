@@ -7,17 +7,21 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/xjosh/flightcli/internal/models"
+	"github.com/xjosh/flightcli/internal/sanitize"
 )
 
 const aviationStackEndpoint = "https://api.aviationstack.com/v1/flights"
 
+var accessKeyQueryPattern = regexp.MustCompile(`(access_key=)[^&\s"]*`)
+
 const (
 	metersToFeet = 3.28084
-	kmhToMph    = 0.621371
+	kmhToMph     = 0.621371
 )
 
 type AviationStackProvider struct {
@@ -173,11 +177,11 @@ func (a *AviationStackProvider) fetchFlights(ctx context.Context, params url.Val
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("building AviationStack request: %w", err)
+		return nil, redactedErrorf(err, "building AviationStack request for %s", redactAccessKey(endpoint.String()))
 	}
 	resp, err := providerHTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach AviationStack API: %w", err)
+		return nil, redactedErrorf(err, "failed to reach AviationStack API: %s", sanitizedProviderErrorText(err.Error()))
 	}
 	defer resp.Body.Close()
 
@@ -331,4 +335,36 @@ func formatStatus(status string) string {
 	default:
 		return status
 	}
+}
+
+type redactedError struct {
+	message string
+	err     error
+}
+
+func (e redactedError) Error() string {
+	return e.message
+}
+
+func (e redactedError) Unwrap() error {
+	return e.err
+}
+
+func redactedErrorf(err error, format string, args ...interface{}) error {
+	return redactedError{
+		message: fmt.Sprintf(format, args...),
+		err:     err,
+	}
+}
+
+func redactAccessKey(rawURL string) string {
+	return redactAccessKeyInText(rawURL)
+}
+
+func redactAccessKeyInText(s string) string {
+	return accessKeyQueryPattern.ReplaceAllString(s, "${1}[REDACTED]")
+}
+
+func sanitizedProviderErrorText(s string) string {
+	return sanitize.TerminalString(redactAccessKeyInText(s))
 }
