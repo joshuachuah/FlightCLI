@@ -188,15 +188,17 @@ func TestEffectiveFlightStatusDowngradesActiveWithoutDepartureEvidence(t *testin
 	}
 }
 
-func TestEffectiveFlightStatusTrustsActiveWithLiveOrActualDeparture(t *testing.T) {
-	withLive := effectiveFlightStatus(aviationStackFlight{
+func TestEffectiveFlightStatusTrustsActiveWithAirborneLiveOrActualDeparture(t *testing.T) {
+	// Live data with IsGround == false means the plane is in the air
+	withAirborne := effectiveFlightStatus(aviationStackFlight{
 		FlightStatus: "active",
-		Live:         &aviationStackLive{IsGround: true},
+		Live:         &aviationStackLive{IsGround: false},
 	})
-	if withLive != "active" {
-		t.Fatalf("expected active flight with live data to stay active, got %q", withLive)
+	if withAirborne != "active" {
+		t.Fatalf("expected active flight with airborne live data to stay active, got %q", withAirborne)
 	}
 
+	// Actual departure time recorded means the plane has left
 	withActual := effectiveFlightStatus(aviationStackFlight{
 		FlightStatus: "active",
 		Departure: aviationStackAirport{
@@ -205,6 +207,50 @@ func TestEffectiveFlightStatusTrustsActiveWithLiveOrActualDeparture(t *testing.T
 	})
 	if withActual != "active" {
 		t.Fatalf("expected active flight with actual departure to stay active, got %q", withActual)
+	}
+}
+
+func TestEffectiveFlightStatusDowngradesActiveWithOnlyGroundTelemetry(t *testing.T) {
+	// Live data with IsGround == true and no actual departure = still at gate
+	withGround := effectiveFlightStatus(aviationStackFlight{
+		FlightStatus: "active",
+		Live:         &aviationStackLive{IsGround: true},
+	})
+	if withGround != "scheduled" {
+		t.Fatalf("expected active flight with only ground telemetry to be downgraded, got %q", withGround)
+	}
+}
+
+func TestBestFlightPrefersCurrentScheduledOverStaleLanded(t *testing.T) {
+	now := time.Now().UTC()
+	staleDeparture := now.Add(-48 * time.Hour).Format("2006-01-02T15:04:05+00:00")
+	currentDeparture := now.Add(15 * time.Minute).Format("2006-01-02T15:04:05+00:00")
+
+	best := bestFlight([]aviationStackFlight{
+		{
+			FlightStatus: "landed",
+			Departure: aviationStackAirport{
+				IATA:      "KUL",
+				Timezone:  "UTC",
+				Scheduled: staleDeparture,
+			},
+			Airline: aviationStackAirline{Name: "Old Landed Air"},
+			Flight:  aviationStackInfo{IATA: "D7504"},
+		},
+		{
+			FlightStatus: "scheduled",
+			Departure: aviationStackAirport{
+				IATA:      "ICN",
+				Timezone:  "UTC",
+				Scheduled: currentDeparture,
+			},
+			Airline: aviationStackAirline{Name: "Current Air"},
+			Flight:  aviationStackInfo{IATA: "D7504"},
+		},
+	})
+
+	if best.Airline.Name != "Current Air" {
+		t.Fatalf("expected current scheduled flight to beat stale landed flight, got %q", best.Airline.Name)
 	}
 }
 
