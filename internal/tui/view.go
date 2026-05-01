@@ -63,11 +63,11 @@ func (m model) View() string {
 		contentStr += strings.Repeat("\n", linesNeeded)
 	}
 
-	// Stack vertically
+	// Stack vertically: status bar, input bar, then content
 	return lipgloss.JoinVertical(lipgloss.Left,
 		statusBar,
-		contentStr,
 		inputBar,
+		contentStr,
 	)
 }
 
@@ -139,69 +139,30 @@ func (m model) renderInputBar() string {
 		width = 1
 	}
 
-	if m.screen == screenHome {
-		// Command input line
-		prompt := inputPromptStyle.Render(" > ")
-		value := inputTextStyle.Render(m.commandInput)
-		cursor := inputCursorStyle.Render("▎")
-		inputLine := prompt + value + cursor
+	// Input line — same across all screens
+	prompt := inputPromptStyle.Render("> ")
+	value := inputTextStyle.Render(m.commandInput)
+	cursor := inputCursorStyle.Render("▎")
+	inputLine := prompt + value + cursor
 
-		// Pad input line to full width
-		inputLen := lipgloss.Width(prompt + value + cursor)
-		padding := width - inputLen
-		if padding < 0 {
-			padding = 0
-		}
-		inputLine += strings.Repeat(" ", padding)
-
-		// Keymap line
-		keymap := renderKeymap([]keyHint{
-			{"enter", "run"},
-			{"t/a/s/?", "shortcuts"},
-			{"tab", "complete"},
-			{"esc", "quit"},
-		})
-		keymapPadding := width - lipgloss.Width(keymap)
-		if keymapPadding < 0 {
-			keymapPadding = 0
-		}
-		keymapLine := keymap + strings.Repeat(" ", keymapPadding)
-
-		top := inputBarStyle.Render(inputLine)
-		bottom := inputBarStyle.Render(keymapLine)
-		return top + "\n" + bottom
+	// Pad input line to full width
+	inputLen := lipgloss.Width(prompt + value + cursor)
+	padding := width - inputLen
+	if padding < 0 {
+		padding = 0
 	}
+	inputLine += strings.Repeat(" ", padding)
 
-	// Form or result screen
-	var keymapText string
-	if m.screen == screenResult {
-		keymapText = renderKeymap([]keyHint{
-			{"r", "refresh"},
-			{"↑↓", "scroll"},
-			{"esc", "back"},
-			{"q", "quit"},
-		})
-	} else if m.screen == screenHelp {
-		keymapText = renderKeymap([]keyHint{
-			{"esc/any", "back"},
-		})
-	} else {
-		keymapText = renderKeymap([]keyHint{
-			{"tab", "next field"},
-			{"enter", "submit"},
-			{"esc", "back"},
-		})
+	// Hint line — just "? for shortcuts" left-aligned
+	hint := hintStyle.Render("? for shortcuts")
+	hintPadding := width - lipgloss.Width(hint)
+	if hintPadding < 0 {
+		hintPadding = 0
 	}
-
-	inputLine := strings.Repeat(" ", width)
-	keymapPadding := width - lipgloss.Width(keymapText)
-	if keymapPadding < 0 {
-		keymapPadding = 0
-	}
-	keymapLine := keymapText + strings.Repeat(" ", keymapPadding)
+	hintLine := hint + strings.Repeat(" ", hintPadding)
 
 	top := inputBarStyle.Render(inputLine)
-	bottom := inputBarStyle.Render(keymapLine)
+	bottom := inputBarStyle.Render(hintLine)
 	return top + "\n" + bottom
 }
 
@@ -228,53 +189,6 @@ func (m model) viewHome() string {
 	if m.err != "" {
 		b.WriteString(errorStyle.Render("  ✗ " + m.err))
 		b.WriteString("\n\n")
-	}
-
-	// Welcome banner
-	b.WriteString(headerStyle.Render("  FlightCLI"))
-	b.WriteString("\n")
-	b.WriteString(labelStyle.Render("  Real-time flight tracking from your terminal"))
-	b.WriteString("\n\n")
-
-	// Command menu
-	commands := []struct {
-		cmd      string
-		desc     string
-		shortcut string
-	}{
-		{"/track AA100", "Track a flight by number", "t"},
-		{"/airport JFK departures", "Show airport board", "a"},
-		{"/search JFK LAX", "Search routes between airports", "s"},
-		{"/help", "Show help", "?"},
-		{"/quit", "Exit", ""},
-	}
-
-	for _, c := range commands {
-		b.WriteString("  ")
-		b.WriteString(keyStyle.Render(c.cmd))
-		available := m.width - lipgloss.Width("  ") - lipgloss.Width(c.cmd) - lipgloss.Width("  ")
-		if c.shortcut != "" {
-			available -= lipgloss.Width("  (" + c.shortcut + ")")
-		}
-		if lipgloss.Width(c.desc) <= available {
-			b.WriteString("  ")
-			b.WriteString(keyDescStyle.Render(c.desc))
-		} else {
-			b.WriteString("\n    ")
-			available = m.width - lipgloss.Width("    ")
-			if c.shortcut != "" {
-				available -= lipgloss.Width("  (" + c.shortcut + ")")
-			}
-			if available < 1 {
-				available = 1
-			}
-			b.WriteString(keyDescStyle.Render(trimForWidth(c.desc, available)))
-		}
-		if c.shortcut != "" {
-			b.WriteString("  ")
-			b.WriteString(keyDescStyle.Render("(" + c.shortcut + ")"))
-		}
-		b.WriteString("\n")
 	}
 
 	return b.String()

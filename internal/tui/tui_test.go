@@ -118,15 +118,23 @@ func TestTrimForWidthHandlesMultibyteRunes(t *testing.T) {
 	}
 }
 
-func TestViewHomeShowsSlashCommands(t *testing.T) {
+func TestViewHomeShowsErrorWhenPresent(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
 	m.width = 80
 	m.height = 24
-	output := m.View()
+	m.err = "something went wrong"
 
-	for _, part := range []string{"/track", "/airport", "/search", "/help", "/quit"} {
-		if !strings.Contains(output, part) {
-			t.Fatalf("home view %q missing %q", output, part)
+	output := m.View()
+	if !strings.Contains(output, "something went wrong") {
+		t.Fatalf("expected home view to show error message, got:\n%s", output)
+	}
+
+	// Home view without error should be mostly empty
+	m.err = ""
+	output = m.View()
+	for _, cmd := range []string{"/track", "/airport", "/search"} {
+		if strings.Contains(output, cmd) {
+			t.Fatalf("expected minimal home view without command menu, but found %q", cmd)
 		}
 	}
 }
