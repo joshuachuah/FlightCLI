@@ -25,13 +25,13 @@ func (m model) View() string {
 		return "Terminal too small. Please resize to at least 40x10."
 	}
 
-	// Calculate content area height
-	contentHeight := m.height - statusBarHeight - inputBarHeight
-	if contentHeight < 1 {
-		contentHeight = 1
+	// Total height budget: status bar at top, remaining space below
+	availableHeight := m.height - statusBarHeight
+	if availableHeight < 1 {
+		availableHeight = 1
 	}
 
-	// Render the three panes
+	// Render parts
 	statusBar := m.renderStatusBar()
 	inputBar := m.renderInputBar()
 
@@ -49,9 +49,18 @@ func (m model) View() string {
 		content += currentScreen
 	}
 
-	// Apply scroll offset and clip content to visible area
+	// Split content into lines to handle scrolling
 	contentLines := strings.Split(content, "\n")
-	maxScroll := len(contentLines) - contentHeight
+	inputLines := 2 // input bar is always 2 lines
+
+	// How many content lines can we show?
+	visibleContentLines := availableHeight - inputLines
+	if visibleContentLines < 1 {
+		visibleContentLines = 1
+	}
+
+	// Clamp scroll offset
+	maxScroll := len(contentLines) - visibleContentLines
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -64,20 +73,16 @@ func (m model) View() string {
 
 	// Slice content based on scroll offset
 	start := m.scrollOffset
-	end := start + contentHeight
+	end := start + visibleContentLines
 	if end > len(contentLines) {
 		end = len(contentLines)
 	}
 	visibleLines := contentLines[start:end]
 
-	// Pad to fill content area
 	contentStr := strings.Join(visibleLines, "\n")
-	linesNeeded := contentHeight - len(visibleLines)
-	if linesNeeded > 0 {
-		contentStr += strings.Repeat("\n", linesNeeded)
-	}
 
-	// Stack vertically: status bar, content (scrollback), input bar (pinned at bottom)
+	// Stack vertically: status bar, content, input bar (right after content)
+	// If content doesn't fill the space, input bar still sits right below it
 	return lipgloss.JoinVertical(lipgloss.Left,
 		statusBar,
 		contentStr,
