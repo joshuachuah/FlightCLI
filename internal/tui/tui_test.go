@@ -101,6 +101,23 @@ func TestTrimForWidth(t *testing.T) {
 	}
 }
 
+func TestTrimForWidthHandlesMultibyteRunes(t *testing.T) {
+	// "München" is 7 runes but 8 bytes (ü is 2 bytes)
+	if got := trimForWidth("München", 7); got != "München" {
+		t.Fatalf("expected full string, got %q", got)
+	}
+	if got := trimForWidth("München", 5); got != "Münc..." {
+		t.Fatalf("expected trimmed at rune boundary, got %q", got)
+	}
+	// CJK: each character is 3 bytes but 1 rune
+	if got := trimForWidth("东京成田", 4); got != "东京成田" {
+		t.Fatalf("expected full CJK string, got %q", got)
+	}
+	if got := trimForWidth("东京成田", 2); got != "东京..." {
+		t.Fatalf("expected CJK trimmed at rune boundary, got %q", got)
+	}
+}
+
 func TestViewHomeShowsSlashCommandsWithoutTitle(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
 	output := m.View()
