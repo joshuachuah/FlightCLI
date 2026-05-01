@@ -372,6 +372,7 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.err = ""
 		m.statusMessage = "Type /help for commands"
 		m.scrollOffset = 0
+		return m, nil
 	case "r":
 		if m.lastQuery.kind == queryNone {
 			return m, nil
@@ -386,9 +387,11 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.scrollOffset > 0 {
 			m.scrollOffset--
 		}
+		return m, nil
 	case "down":
 		m.scrollOffset++
 		m.clampScroll()
+		return m, nil
 	case "pgup":
 		contentHeight := m.height - statusBarHeight - inputBarHeight
 		if contentHeight < 1 {
@@ -398,6 +401,7 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.scrollOffset < 0 {
 			m.scrollOffset = 0
 		}
+		return m, nil
 	case "pgdown":
 		contentHeight := m.height - statusBarHeight - inputBarHeight
 		if contentHeight < 1 {
@@ -405,6 +409,17 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.scrollOffset += contentHeight
 		m.clampScroll()
+		return m, nil
+	}
+
+	// Any printable key: jump back to home and feed it into the command input
+	if len(msg.Runes) > 0 && !msg.Alt {
+		m.screen = screenHome
+		m.err = ""
+		m.scrollOffset = 0
+		m.statusMessage = "Type /help for commands"
+		m.commandInput = string(msg.Runes)
+		m.resetHomeInputNavigation()
 	}
 	return m, nil
 }
