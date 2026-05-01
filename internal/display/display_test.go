@@ -155,6 +155,57 @@ func TestFlightStatusLinesIncludesElapsedAndRemaining(t *testing.T) {
 	}
 }
 
+func TestFlightStatusLinesSanitizesTerminalControls(t *testing.T) {
+	lines := FlightStatusLines(&models.Flight{
+		FlightNumber: "AA100\x1b[31m",
+		Airline:      "Safe Air\x1b]8;;https://evil.test\aLink\x1b]8;;\a",
+		Departure:    "JFK\r",
+		Arrival:      "LAX",
+		Status:       "In Flight\x1b]0;spoof\x1b\\",
+	}, time.Now())
+
+	output := strings.Join(lines, "\n")
+	for _, forbidden := range []string{"\x1b", "\r", "\a", "https://evil.test", "spoof"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("flight lines %q still contain forbidden terminal content %q", output, forbidden)
+		}
+	}
+	for _, part := range []string{"AA100", "Safe AirLink", "Route:    JFK -> LAX", "Status:   In Flight"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("flight lines %q missing sanitized content %q", output, part)
+		}
+	}
+}
+
+func TestPrintFlightStatusSanitizesTerminalControls(t *testing.T) {
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	t.Cleanup(func() {
+		color.NoColor = originalNoColor
+	})
+
+	output := captureStdout(t, func() {
+		PrintFlightStatus(&models.Flight{
+			FlightNumber: "AA100\x1b[31m",
+			Airline:      "Safe Air\x1b]0;spoof\a Lines",
+			Departure:    "JFK\u009b2J",
+			Arrival:      "LAX\r",
+			Status:       "In Flight\x1b]8;;https://evil.test\aLink\x1b]8;;\a",
+		})
+	})
+
+	for _, forbidden := range []string{"\x1b", "\a", "\r", "spoof", "https://evil.test"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("flight output %q still contains forbidden terminal content %q", output, forbidden)
+		}
+	}
+	for _, part := range []string{"Flight:   AA100", "Airline:  Safe Air Lines", "Route:    JFK -> LAX", "Status:   In FlightLink"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("flight output %q missing sanitized content %q", output, part)
+		}
+	}
+}
+
 func TestSearchFlightLinesIncludeRestoredMetrics(t *testing.T) {
 	lines := SearchFlightLines(models.AirportFlight{
 		FlightNumber:  "DL200",
@@ -195,6 +246,33 @@ func TestSearchFlightLinesIncludeZeroTelemetryWhenLocationExists(t *testing.T) {
 	for _, part := range []string{"Location:", "Altitude:  0 ft", "Speed:     0 mph"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("search lines %q missing %q", output, part)
+		}
+	}
+}
+
+func TestAirportFlightRowSanitizesTerminalControls(t *testing.T) {
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	t.Cleanup(func() {
+		color.NoColor = originalNoColor
+	})
+
+	row := airportFlightRow(models.AirportFlight{
+		FlightNumber: "DL200\x1b[2J",
+		Airline:      "Delta\x1b]0;spoof\x1b\\ Air Lines",
+		Origin:       "JFK",
+		Destination:  "LAX\x00",
+		Status:       "Scheduled\x1b[31m",
+	})
+
+	for _, forbidden := range []string{"\x1b", "\x00", "spoof"} {
+		if strings.Contains(row, forbidden) {
+			t.Fatalf("airport row %q still contains forbidden terminal content %q", row, forbidden)
+		}
+	}
+	for _, part := range []string{"DL200", "Delta Air Lines", "JFK -> LAX", "Scheduled"} {
+		if !strings.Contains(row, part) {
+			t.Fatalf("airport row %q missing sanitized content %q", row, part)
 		}
 	}
 }

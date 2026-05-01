@@ -68,6 +68,29 @@ func TestFormatBoardIncludesRows(t *testing.T) {
 	}
 }
 
+func TestFormatBoardSanitizesTerminalControls(t *testing.T) {
+	output := formatBoard([]models.AirportFlight{
+		{
+			FlightNumber: "DL200\x1b[2J",
+			Airline:      "Delta\u009d0;spoof\a Air Lines",
+			Origin:       "JFK",
+			Destination:  "LAX\x00",
+			Status:       "Scheduled\x1b]8;;https://evil.test\a\x1b]8;;\a",
+		},
+	})
+
+	for _, forbidden := range []string{"\x1b[2J", "\a", "\x00", "spoof", "https://evil.test"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("board output %q still contains forbidden terminal content %q", output, forbidden)
+		}
+	}
+	for _, part := range []string{"DL200", "Delta Air Lines", "JFK->LAX", "Scheduled"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("board output %q missing sanitized content %q", output, part)
+		}
+	}
+}
+
 func TestFormatSearchResultsIncludesRestoredMetrics(t *testing.T) {
 	output := formatSearchResults([]models.AirportFlight{
 		{

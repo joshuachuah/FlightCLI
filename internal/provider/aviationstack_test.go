@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,22 +25,13 @@ func withTestHTTPClient(t *testing.T, assert func(*http.Request), handler http.H
 	t.Helper()
 	providerHTTPClientMu.Lock()
 
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-
-	serverURL, err := url.Parse(server.URL)
-	if err != nil {
-		t.Fatalf("parse server url: %v", err)
-	}
-
 	originalClient := providerHTTPClient
 	providerHTTPClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			assert(req)
-			rewritten := req.Clone(req.Context())
-			rewritten.URL.Scheme = serverURL.Scheme
-			rewritten.URL.Host = serverURL.Host
-			return http.DefaultTransport.RoundTrip(rewritten)
+			recorder := httptest.NewRecorder()
+			handler(recorder, req)
+			return recorder.Result(), nil
 		}),
 	}
 	t.Cleanup(func() {
@@ -147,6 +139,87 @@ func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
 	_, err := provider.fetchFlights(ctx, url.Values{"flight_iata": []string{"AA100"}})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation, got %v", err)
+	}
+}
+
+func TestFetchFlightsRedactsAccessKeyFromTransportError(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+	providerHTTPClientMu.Lock()
+
+	originalClient := providerHTTPClient
+	providerHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("dial tcp failed")
+		}),
+	}
+	t.Cleanup(func() {
+		providerHTTPClient = originalClient
+		providerHTTPClientMu.Unlock()
+	})
+
+	_, err := provider.fetchFlights(context.Background(), url.Values{"flight_iata": []string{"AA100"}})
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+
+	message := err.Error()
+	if strings.Contains(message, "secret-key") {
+		t.Fatalf("transport error leaked API key: %q", message)
+	}
+	if !strings.Contains(message, "access_key=[REDACTED]") {
+		t.Fatalf("transport error did not include redacted access key: %q", message)
+	}
+}
+
+func TestFetchFlightsSanitizesTransportErrorControls(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+	providerHTTPClientMu.Lock()
+
+	originalClient := providerHTTPClient
+	providerHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("dial failed\x1b]0;spoof\a")
+		}),
+	}
+	t.Cleanup(func() {
+		providerHTTPClient = originalClient
+		providerHTTPClientMu.Unlock()
+	})
+
+	_, err := provider.fetchFlights(context.Background(), url.Values{"flight_iata": []string{"AA100"}})
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+
+	message := err.Error()
+	for _, forbidden := range []string{"\x1b", "\a", "spoof", "secret-key"} {
+		if strings.Contains(message, forbidden) {
+			t.Fatalf("transport error %q still contains forbidden content %q", message, forbidden)
+		}
+	}
+}
+
+func TestFetchFlightsRedactedTransportErrorStillUnwraps(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+	providerHTTPClientMu.Lock()
+
+	originalClient := providerHTTPClient
+	providerHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, context.Canceled
+		}),
+	}
+	t.Cleanup(func() {
+		providerHTTPClient = originalClient
+		providerHTTPClientMu.Unlock()
+	})
+
+	_, err := provider.fetchFlights(context.Background(), url.Values{"flight_iata": []string{"AA100"}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected redacted error to unwrap context cancellation, got %v", err)
+	}
+	if strings.Contains(err.Error(), "secret-key") {
+		t.Fatalf("redacted cancellation error leaked API key: %q", err.Error())
 	}
 }
 
