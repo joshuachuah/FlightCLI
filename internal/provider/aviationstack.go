@@ -228,30 +228,84 @@ func airportFlightFromAviationStack(f aviationStackFlight, scheduled time.Time) 
 }
 
 // bestFlight picks the most relevant flight from multiple results.
-// Prefers active > landed > scheduled, so we don't show a future
-// scheduled flight when the current one is still in the air.
+// It prefers status priority (active > landed > scheduled), but also
+// considers recency: a stale completed flight from over a day before
+// a scheduled one should not win just because "landed" outranks
+// "scheduled". Specifically, a higher-priority flight is skipped if
+// it departed more than 24 hours before a lower-priority alternative.
 func bestFlight(flights []aviationStackFlight) aviationStackFlight {
 	best := flights[0]
 	bestPri := flightPriority(effectiveFlightStatus(best))
+	bestDistance := departureDistanceFromNow(best)
+	bestDeparture := departureTimeOf(best)
 	for _, f := range flights[1:] {
 		p := flightPriority(effectiveFlightStatus(f))
+		distance := departureDistanceFromNow(f)
+		depart := departureTimeOf(f)
+
 		if p < bestPri {
+			// New flight has better priority. But if it departed more than
+			// 24 hours before the current best, it's stale — skip it.
+			if !bestDeparture.IsZero() && !depart.IsZero() && bestDeparture.Sub(depart) > 24*time.Hour {
+				continue
+			}
 			best = f
 			bestPri = p
+			bestDistance = distance
+			bestDeparture = depart
+		} else if p > bestPri {
+			// Current best has better priority. But if it departed more than
+			// 24 hours before this more recent flight, it's stale — replace.
+			if !bestDeparture.IsZero() && !depart.IsZero() && depart.Sub(bestDeparture) > 24*time.Hour {
+				best = f
+				bestPri = p
+				bestDistance = distance
+				bestDeparture = depart
+			}
+		} else if distance < bestDistance {
+			// Same priority: prefer closer to now
+			best = f
+			bestPri = p
+			bestDistance = distance
+			bestDeparture = depart
 		}
 	}
 	return best
 }
 
+func departureTimeOf(f aviationStackFlight) time.Time {
+	return parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled)
+}
+
+func departureDistanceFromNow(f aviationStackFlight) time.Duration {
+	departure := parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled)
+	if departure.IsZero() {
+		return 1 << 62
+	}
+
+	distance := time.Since(departure)
+	if distance < 0 {
+		return -distance
+	}
+	return distance
+}
+
 func effectiveFlightStatus(f aviationStackFlight) string {
 	status := strings.ToLower(strings.TrimSpace(f.FlightStatus))
 
-	// If the API says "active" but there's no actual departure time and no
-	// live tracking data, the flight likely hasn't taken off yet.
 	// AviationStack marks flights as "active" near scheduled departure even
-	// if the plane is still at the gate — downgrade to "scheduled".
-	if status == "active" && f.Departure.Actual == "" && f.Live == nil {
-		return "scheduled"
+	// if the plane is still at the gate. Downgrade to "scheduled" unless we
+	// have evidence the flight has actually departed:
+	//   - Live tracking with the plane off the ground (IsGround == false), OR
+	//   - An actual departure time has been recorded
+	//
+	// If the only evidence is ground telemetry (IsGround == true) with no
+	// actual departure, the plane hasn't taken off — treat as "scheduled".
+	if status == "active" {
+		genuinelyAirborne := (f.Live != nil && !f.Live.IsGround) || f.Departure.Actual != ""
+		if !genuinelyAirborne {
+			return "scheduled"
+		}
 	}
 
 	if status == "scheduled" && f.Live != nil && !f.Live.IsGround {
