@@ -15,6 +15,11 @@ import (
 
 const aviationStackEndpoint = "https://api.aviationstack.com/v1/flights"
 
+const (
+	metersToFeet = 3.28084
+	kmhToMph    = 0.621371
+)
+
 type AviationStackProvider struct {
 	APIKey string
 }
@@ -89,8 +94,8 @@ func (a *AviationStackProvider) GetFlightStatus(ctx context.Context, flightNumbe
 	if f.Live != nil {
 		flight.Latitude = f.Live.Latitude
 		flight.Longitude = f.Live.Longitude
-		flight.Altitude = f.Live.Altitude * 3.28084
-		flight.Speed = f.Live.SpeedHorizontal * 0.621371
+		flight.Altitude = f.Live.Altitude * metersToFeet
+		flight.Speed = f.Live.SpeedHorizontal * kmhToMph
 	}
 
 	return flight, nil
@@ -211,8 +216,8 @@ func airportFlightFromAviationStack(f aviationStackFlight, scheduled time.Time) 
 	if f.Live != nil {
 		flight.Latitude = f.Live.Latitude
 		flight.Longitude = f.Live.Longitude
-		flight.Altitude = f.Live.Altitude * 3.28084
-		flight.Speed = f.Live.SpeedHorizontal * 0.621371
+		flight.Altitude = f.Live.Altitude * metersToFeet
+		flight.Speed = f.Live.SpeedHorizontal * kmhToMph
 	}
 
 	return flight

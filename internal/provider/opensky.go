@@ -62,8 +62,8 @@ func (o *OpenSkyProvider) GetFlightStatus(ctx context.Context, flightNumber stri
 		Status:       deriveStatus(state),
 		Latitude:     floatVal(state, 6),
 		Longitude:    floatVal(state, 5),
-		Altitude:     metersToFeet(floatVal(state, 7)),
-		Speed:        msToMph(floatVal(state, 9)),
+		Altitude:     floatVal(state, 7) * metersToFeet,
+		Speed:        floatVal(state, 9) * msToMph,
 	}
 
 	return flight, nil
@@ -104,10 +104,6 @@ func floatVal(state []interface{}, idx int) float64 {
 	return 0
 }
 
-func metersToFeet(m float64) float64 {
-	return m * 3.28084
-}
-
-func msToMph(ms float64) float64 {
-	return ms * 2.23694
-}
+const (
+	msToMph = 2.23694
+)
