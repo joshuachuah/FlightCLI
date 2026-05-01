@@ -147,8 +147,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMessage = "Request failed"
 			// Append error to scrollback
 			m.scrollback = append(m.scrollback, m.renderErrorBlock())
-			m.scrollOffset = 0
 			m.screen = screenHome
+			m.scrollOffset = 0
+			m.clampScroll()
 			return m, cmd
 		}
 		m.err = ""
@@ -162,8 +163,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusMessage = "Type /help for commands"
 		// Append result to scrollback
 		m.scrollback = append(m.scrollback, m.renderResultBlock())
-		m.scrollOffset = 0
 		m.screen = screenHome
+		m.scrollOffset = 0
+		m.clampScroll()
 		return m, nil
 	case clearErrorMsg:
 		if msg.id == m.errID {
@@ -200,36 +202,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 		case "up":
-			if m.screen == screenHome && m.commandInput == "" && m.scrollOffset > 0 {
-				m.scrollOffset--
-				return m, nil
-			}
-		case "down":
-			if m.screen == screenHome && m.commandInput == "" {
+			if m.screen == screenHome && m.commandInput == "" && m.maxScrollOffset() > 0 {
 				m.scrollOffset++
 				m.clampScroll()
 				return m, nil
 			}
+		case "down":
+			if m.screen == screenHome && m.commandInput == "" && m.scrollOffset > 0 {
+				m.scrollOffset--
+				return m, nil
+			}
 		case "pgup":
-			if m.screen == screenHome && m.commandInput == "" {
-				contentHeight := m.height - statusBarHeight - inputBarHeight
-				if contentHeight < 1 {
-					contentHeight = 1
-				}
+			if m.screen == screenHome && m.commandInput == "" && m.maxScrollOffset() > 0 {
+				contentHeight := m.contentViewportHeight()
+				m.scrollOffset += contentHeight
+				m.clampScroll()
+				return m, nil
+			}
+		case "pgdown":
+			if m.screen == screenHome && m.commandInput == "" && m.scrollOffset > 0 {
+				contentHeight := m.contentViewportHeight()
 				m.scrollOffset -= contentHeight
 				if m.scrollOffset < 0 {
 					m.scrollOffset = 0
 				}
-				return m, nil
-			}
-		case "pgdown":
-			if m.screen == screenHome && m.commandInput == "" {
-				contentHeight := m.height - statusBarHeight - inputBarHeight
-				if contentHeight < 1 {
-					contentHeight = 1
-				}
-				m.scrollOffset += contentHeight
-				m.clampScroll()
 				return m, nil
 			}
 		}
@@ -405,17 +401,21 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) clampScroll() {
-	contentHeight := m.height - statusBarHeight - inputBarHeight
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-	maxScroll := len(strings.Split(m.viewResult(), "\n")) - contentHeight
-	if maxScroll < 0 {
-		maxScroll = 0
+	maxScroll := m.maxScrollOffset()
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
 	}
 	if m.scrollOffset > maxScroll {
 		m.scrollOffset = maxScroll
 	}
+}
+
+func (m model) maxScrollOffset() int {
+	maxScroll := len(m.scrollableContentLines()) - m.contentViewportHeight()
+	if maxScroll < 0 {
+		return 0
+	}
+	return maxScroll
 }
 
 func (m model) updateHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

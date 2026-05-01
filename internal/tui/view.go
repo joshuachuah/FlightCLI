@@ -25,22 +25,53 @@ func (m model) View() string {
 		return "Terminal too small. Please resize to at least 40x10."
 	}
 
-	// Total height budget: status bar at top, remaining space below
-	availableHeight := m.height - statusBarHeight
-	if availableHeight < 1 {
-		availableHeight = 1
-	}
-
-	// Render parts
 	statusBar := m.renderStatusBar()
 	inputBar := m.renderInputBar()
+	contentLines := m.scrollableContentLines()
 
-	// Build scrollback content: old results + current screen
+	visibleContentLines := m.contentViewportHeight()
+	maxScroll := len(contentLines) - visibleContentLines
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	scrollOffset := m.scrollOffset
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+	if scrollOffset > maxScroll {
+		scrollOffset = maxScroll
+	}
+
+	visibleLines := contentLines
+	if len(contentLines) > visibleContentLines {
+		start := len(contentLines) - visibleContentLines - scrollOffset
+		if start < 0 {
+			start = 0
+		}
+		end := start + visibleContentLines
+		if end > len(contentLines) {
+			end = len(contentLines)
+		}
+		visibleLines = contentLines[start:end]
+	}
+
+	viewLines := []string{statusBar}
+	viewLines = append(viewLines, visibleLines...)
+	viewLines = append(viewLines, strings.Split(inputBar, "\n")...)
+
+	for len(viewLines) < m.height {
+		viewLines = append(viewLines, "")
+	}
+
+	return strings.Join(viewLines, "\n")
+}
+
+func (m model) renderedScrollableContent() string {
 	var content string
 	if len(m.scrollback) > 0 {
 		content = strings.Join(m.scrollback, "\n\n")
 	}
-	// Append current screen content (forms, help, loading, etc.)
+
 	currentScreen := m.renderCurrentScreen()
 	if currentScreen != "" {
 		if content != "" {
@@ -49,45 +80,23 @@ func (m model) View() string {
 		content += currentScreen
 	}
 
-	// Split content into lines to handle scrolling
-	contentLines := strings.Split(content, "\n")
-	inputLines := 2 // input bar is always 2 lines
+	return content
+}
 
-	// How many content lines can we show?
-	visibleContentLines := availableHeight - inputLines
-	if visibleContentLines < 1 {
-		visibleContentLines = 1
+func (m model) scrollableContentLines() []string {
+	content := m.renderedScrollableContent()
+	if content == "" {
+		return nil
 	}
+	return strings.Split(content, "\n")
+}
 
-	// Clamp scroll offset
-	maxScroll := len(contentLines) - visibleContentLines
-	if maxScroll < 0 {
-		maxScroll = 0
+func (m model) contentViewportHeight() int {
+	height := m.height - statusBarHeight - inputBarHeight
+	if height < 1 {
+		return 1
 	}
-	if m.scrollOffset < 0 {
-		m.scrollOffset = 0
-	}
-	if m.scrollOffset > maxScroll {
-		m.scrollOffset = maxScroll
-	}
-
-	// Slice content based on scroll offset
-	start := m.scrollOffset
-	end := start + visibleContentLines
-	if end > len(contentLines) {
-		end = len(contentLines)
-	}
-	visibleLines := contentLines[start:end]
-
-	contentStr := strings.Join(visibleLines, "\n")
-
-	// Stack vertically: status bar, content, input bar (right after content)
-	// If content doesn't fill the space, input bar still sits right below it
-	return lipgloss.JoinVertical(lipgloss.Left,
-		statusBar,
-		contentStr,
-		inputBar,
-	)
+	return height
 }
 
 func (m model) renderStatusBar() string {

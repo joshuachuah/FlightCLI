@@ -157,10 +157,56 @@ func TestViewHomeShowsErrorInScrollback(t *testing.T) {
 	m.err = ""
 	m.scrollback = nil
 	output = m.View()
+	lines := strings.Split(output, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected status bar and input bar lines, got:\n%s", output)
+	}
+	if !strings.Contains(lines[1], ">") {
+		t.Fatalf("expected input line immediately below status bar, got line %q in:\n%s", lines[1], output)
+	}
+	if !strings.Contains(lines[2], "? for shortcuts") {
+		t.Fatalf("expected input hint below input line, got line %q in:\n%s", lines[2], output)
+	}
 	for _, cmd := range []string{"/track", "/airport", "/search"} {
 		if strings.Contains(output, cmd) {
 			t.Fatalf("expected minimal home view without command menu, but found %q", cmd)
 		}
+	}
+}
+
+func TestViewOverflowShowsLatestContentWithInputAtBottom(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.width = 80
+	m.height = 10
+	m.scrollback = []string{strings.Join([]string{
+		"line 01",
+		"line 02",
+		"line 03",
+		"line 04",
+		"line 05",
+		"line 06",
+		"line 07",
+		"line 08",
+		"line 09",
+		"line 10",
+	}, "\n")}
+
+	output := m.View()
+	lines := strings.Split(output, "\n")
+	if len(lines) != m.height {
+		t.Fatalf("expected view to render %d lines, got %d:\n%s", m.height, len(lines), output)
+	}
+	if strings.Contains(output, "line 01") {
+		t.Fatalf("expected overflowing content to start scrolled toward latest lines, got:\n%s", output)
+	}
+	if !strings.Contains(output, "line 10") {
+		t.Fatalf("expected overflowing content to include latest line, got:\n%s", output)
+	}
+	if !strings.Contains(lines[m.height-2], ">") {
+		t.Fatalf("expected input line pinned above hint at bottom, got line %q in:\n%s", lines[m.height-2], output)
+	}
+	if !strings.Contains(lines[m.height-1], "? for shortcuts") {
+		t.Fatalf("expected input hint pinned to bottom, got line %q in:\n%s", lines[m.height-1], output)
 	}
 }
 
