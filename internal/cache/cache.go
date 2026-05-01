@@ -4,7 +4,7 @@ Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 package cache
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -37,7 +37,7 @@ func New() (*Cache, error) {
 }
 
 func (c *Cache) keyPath(key string) string {
-	hash := fmt.Sprintf("%x", md5.Sum([]byte(key)))
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
 	return filepath.Join(c.Dir, hash+".json")
 }
 
