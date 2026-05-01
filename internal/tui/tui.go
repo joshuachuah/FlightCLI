@@ -6,10 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/xjosh/flightcli/internal/display"
 	"github.com/xjosh/flightcli/internal/models"
 	"github.com/xjosh/flightcli/internal/service"
 )
@@ -21,6 +19,7 @@ const (
 	queryFlight
 	queryAirport
 	querySearch
+	queryHelp
 )
 
 type screen int
@@ -31,6 +30,7 @@ const (
 	screenAirportForm
 	screenSearchForm
 	screenResult
+	screenHelp
 )
 
 type query struct {
@@ -51,30 +51,45 @@ type resultPayload struct {
 	err       error
 }
 
+type clearErrorMsg struct {
+	id int
+}
+
 type model struct {
-	appCtx        context.Context
-	service       service.FlightService
-	screen        screen
-	width         int
-	height        int
-	cursor        int
-	focus         int
-	commandInput  string
-	inputs        []string
-	loading       bool
-	activeRequest int
-	requestCancel context.CancelFunc
-	err           string
-	lastUpdated   time.Time
-	lastQuery     query
-	lastCached    bool
-	flight        *models.Flight
-	flights       []models.AirportFlight
-	activeTitle   string
-	statusMessage string
+	appCtx            context.Context
+	service           service.FlightService
+	screen            screen
+	width             int
+	height            int
+	cursor            int
+	focus             int
+	commandInput      string
+	inputs            []string
+	loading           bool
+	activeRequest     int
+	requestCancel     context.CancelFunc
+	err               string
+	errID             int
+	lastUpdated       time.Time
+	lastQuery         query
+	lastCached        bool
+	flight            *models.Flight
+	flights           []models.AirportFlight
+	activeTitle       string
+	statusMessage     string
+	spinnerFrame      int
+	scrollOffset      int
+	history           []string
+	historyIndex      int
+	completionBase    string
+	completionMatches []string
+	completionIndex   int
 }
 
 var airportCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)
+
+// Spinner frames
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func Launch(ctx context.Context, svc service.FlightService) error {
 	p := tea.NewProgram(initialModel(ctx, svc), tea.WithAltScreen(), tea.WithContext(ctx))
@@ -84,16 +99,29 @@ func Launch(ctx context.Context, svc service.FlightService) error {
 
 func initialModel(ctx context.Context, svc service.FlightService) model {
 	return model{
-		appCtx:        ctx,
-		service:       svc,
-		screen:        screenHome,
-		inputs:        []string{"", "", ""},
-		statusMessage: "Type /help for commands. Press q to quit.",
+		appCtx:          ctx,
+		service:         svc,
+		screen:          screenHome,
+		inputs:          []string{"", "", ""},
+		statusMessage:   "Type /help for commands",
+		historyIndex:    -1,
+		completionIndex: -1,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.SetWindowTitle("FlightCLI")
+	return tea.Batch(
+		tea.SetWindowTitle("FlightCLI"),
+		spinnerTick(),
+	)
+}
+
+type spinnerTickMsg struct{}
+
+func spinnerTick() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return spinnerTickMsg{}
+	})
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -102,6 +130,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
+	case spinnerTickMsg:
+		if m.loading {
+			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		}
+		return m, spinnerTick()
 	case resultPayload:
 		if msg.requestID != m.activeRequest {
 			return m, nil
@@ -109,9 +142,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.requestCancel = nil
 		if msg.err != nil {
-			m.err = msg.err.Error()
-			m.statusMessage = "Request failed. Press esc to go back."
-			return m, nil
+			cmd := m.setError(msg.err.Error())
+			m.statusMessage = "Request failed"
+			return m, cmd
 		}
 		m.err = ""
 		m.commandInput = ""
@@ -121,8 +154,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flights = msg.board
 		m.lastUpdated = time.Now()
 		m.activeTitle = titleForQuery(msg.query)
-		m.statusMessage = "Press r to refresh, esc to go back, q to quit."
+		m.statusMessage = "r refresh · esc back · q quit"
+		m.scrollOffset = 0
 		m.screen = screenResult
+		return m, nil
+	case clearErrorMsg:
+		if msg.id == m.errID {
+			m.err = ""
+		}
 		return m, nil
 	case tea.KeyMsg:
 		if m.loading {
@@ -139,7 +178,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.requestCancel()
 					m.requestCancel = nil
 				}
-				m.statusMessage = "Request dismissed. Press Enter to try again."
+				m.statusMessage = "Dismissed"
 				return m, nil
 			}
 			return m, nil
@@ -161,6 +200,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateForm(msg)
 		case screenResult:
 			return m.updateResult(msg)
+		case screenHelp:
+			return m.updateHelp(msg)
 		}
 	}
 
@@ -172,28 +213,75 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "backspace":
 		if m.commandInput != "" {
 			m.commandInput = m.commandInput[:len(m.commandInput)-1]
+			m.resetHomeInputNavigation()
 		}
+	case "tab":
+		m.completeSlashCommand()
+	case "up":
+		m.previousHistory()
+	case "down":
+		m.nextHistory()
 	case "enter":
 		m.err = ""
+		submittedCommand := strings.TrimSpace(m.commandInput)
+		if strings.HasPrefix(submittedCommand, "/") {
+			m.addHistory(submittedCommand)
+		}
 		q, done, err := parseSlashCommand(m.commandInput)
 		if err != nil {
-			m.err = err.Error()
-			return m, nil
+			return m, m.setError(err.Error())
 		}
 		if done {
 			return m, tea.Quit
 		}
+		if q.kind == queryHelp {
+			m.screen = screenHelp
+			m.commandInput = ""
+			m.statusMessage = "any key back"
+			return m, nil
+		}
 		if q.kind == queryNone {
-			m.statusMessage = "Type /track [flightNumber], /airport [airport] [departures/arrivals], or /search [airport1] [airport2]. /airport defaults to departures."
+			m.statusMessage = "/track [flight] · /airport [code] · /search [from] [to]"
 			return m, nil
 		}
 		m.activeRequest++
 		m.loading = true
 		m.statusMessage = loadingMessage(q)
-		return m, m.startRequest(q)
+		return m, tea.Batch(m.startRequest(q), spinnerTick())
 	default:
+		// Single-key shortcuts when command input is empty
+		if m.commandInput == "" && !msg.Alt {
+			switch msg.String() {
+			case "t":
+				m.screen = screenFlightForm
+				m.inputs = []string{"", "", ""}
+				m.focus = 0
+				m.err = ""
+				m.statusMessage = "tab next · enter submit · esc back"
+				return m, nil
+			case "a":
+				m.screen = screenAirportForm
+				m.inputs = []string{"", "", ""}
+				m.focus = 0
+				m.err = ""
+				m.statusMessage = "tab next · enter submit · esc back"
+				return m, nil
+			case "s":
+				m.screen = screenSearchForm
+				m.inputs = []string{"", "", ""}
+				m.focus = 0
+				m.err = ""
+				m.statusMessage = "tab next · enter submit · esc back"
+				return m, nil
+			case "?":
+				m.screen = screenHelp
+				m.statusMessage = "any key back"
+				return m, nil
+			}
+		}
 		if len(msg.Runes) > 0 && !msg.Alt {
 			m.commandInput += string(msg.Runes)
+			m.resetHomeInputNavigation()
 		}
 	}
 	return m, nil
@@ -204,7 +292,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = screenHome
 		m.err = ""
-		m.statusMessage = "Type /help for commands. Press q to quit."
+		m.statusMessage = "Type /help for commands"
 		return m, nil
 	case "tab", "shift+tab", "up", "down":
 		m.moveFocus(msg.String())
@@ -219,24 +307,21 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case screenFlightForm:
 			q := query{kind: queryFlight, flight: strings.TrimSpace(m.inputs[0])}
 			if q.flight == "" {
-				m.err = "Flight number is required."
-				return m, nil
+				return m, m.setError("Flight number is required")
 			}
 			m.activeRequest++
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Fetching flight status..."
-			return m, m.startRequest(q)
+			return m, tea.Batch(m.startRequest(q), spinnerTick())
 		case screenAirportForm:
 			code := strings.TrimSpace(m.inputs[0])
 			flightType := strings.TrimSpace(m.inputs[1])
 			if code == "" {
-				m.err = "Airport code is required."
-				return m, nil
+				return m, m.setError("Airport code is required")
 			}
 			if !airportCodePattern.MatchString(strings.ToUpper(code)) {
-				m.err = "Invalid airport code: use a 3-letter IATA code."
-				return m, nil
+				return m, m.setError("Invalid airport code: use 3-letter IATA")
 			}
 			if flightType == "" {
 				flightType = "departures"
@@ -246,7 +331,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Fetching airport board..."
-			return m, m.startRequest(q)
+			return m, tea.Batch(m.startRequest(q), spinnerTick())
 		case screenSearchForm:
 			q := query{
 				kind: querySearch,
@@ -254,22 +339,19 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				to:   strings.TrimSpace(m.inputs[1]),
 			}
 			if q.from == "" || q.to == "" {
-				m.err = "Both airport codes are required."
-				return m, nil
+				return m, m.setError("Both airport codes are required")
 			}
 			if !airportCodePattern.MatchString(strings.ToUpper(q.from)) {
-				m.err = "Invalid airport code: use a 3-letter IATA code."
-				return m, nil
+				return m, m.setError("Invalid origin: use 3-letter IATA")
 			}
 			if !airportCodePattern.MatchString(strings.ToUpper(q.to)) {
-				m.err = "Invalid airport code: use a 3-letter IATA code."
-				return m, nil
+				return m, m.setError("Invalid destination: use 3-letter IATA")
 			}
 			m.activeRequest++
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Searching route..."
-			return m, m.startRequest(q)
+			return m, tea.Batch(m.startRequest(q), spinnerTick())
 		}
 	default:
 		if len(msg.Runes) > 0 && !msg.Alt {
@@ -288,7 +370,8 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.screen = screenHome
 		m.err = ""
-		m.statusMessage = "Type /help for commands. Press q to quit."
+		m.statusMessage = "Type /help for commands"
+		m.scrollOffset = 0
 	case "r":
 		if m.lastQuery.kind == queryNone {
 			return m, nil
@@ -296,9 +379,54 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.activeRequest++
 		m.loading = true
 		m.err = ""
+		m.scrollOffset = 0
 		m.statusMessage = "Refreshing..."
-		return m, m.startRequest(m.lastQuery)
+		return m, tea.Batch(m.startRequest(m.lastQuery), spinnerTick())
+	case "up":
+		if m.scrollOffset > 0 {
+			m.scrollOffset--
+		}
+	case "down":
+		m.scrollOffset++
+		m.clampScroll()
+	case "pgup":
+		contentHeight := m.height - statusBarHeight - inputBarHeight
+		if contentHeight < 1 {
+			contentHeight = 1
+		}
+		m.scrollOffset -= contentHeight
+		if m.scrollOffset < 0 {
+			m.scrollOffset = 0
+		}
+	case "pgdown":
+		contentHeight := m.height - statusBarHeight - inputBarHeight
+		if contentHeight < 1 {
+			contentHeight = 1
+		}
+		m.scrollOffset += contentHeight
+		m.clampScroll()
 	}
+	return m, nil
+}
+
+func (m *model) clampScroll() {
+	contentHeight := m.height - statusBarHeight - inputBarHeight
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	maxScroll := len(strings.Split(m.viewResult(), "\n")) - contentHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.scrollOffset > maxScroll {
+		m.scrollOffset = maxScroll
+	}
+}
+
+func (m model) updateHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Any key returns to home
+	m.screen = screenHome
+	m.statusMessage = "Type /help for commands"
 	return m, nil
 }
 
@@ -306,6 +434,136 @@ func (m *model) startRequest(q query) tea.Cmd {
 	requestCtx, cancel := context.WithTimeout(m.appCtx, 20*time.Second)
 	m.requestCancel = cancel
 	return fetchQueryCmd(requestCtx, cancel, m.service, m.activeRequest, q)
+}
+
+func (m *model) setError(message string) tea.Cmd {
+	m.err = message
+	m.errID++
+	id := m.errID
+	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		return clearErrorMsg{id: id}
+	})
+}
+
+func (m *model) resetHomeInputNavigation() {
+	m.historyIndex = -1
+	m.completionBase = ""
+	m.completionMatches = nil
+	m.completionIndex = -1
+}
+
+func (m *model) addHistory(command string) {
+	command = strings.TrimSpace(command)
+	if command == "" || !strings.HasPrefix(command, "/") {
+		return
+	}
+	if len(m.history) > 0 && m.history[len(m.history)-1] == command {
+		m.historyIndex = -1
+		return
+	}
+	m.history = append(m.history, command)
+	if len(m.history) > 10 {
+		m.history = m.history[len(m.history)-10:]
+	}
+	m.historyIndex = -1
+}
+
+func (m *model) previousHistory() {
+	if !strings.HasPrefix(m.commandInput, "/") || len(m.history) == 0 {
+		return
+	}
+	if m.historyIndex == -1 {
+		m.historyIndex = len(m.history) - 1
+	} else if m.historyIndex > 0 {
+		m.historyIndex--
+	}
+	m.commandInput = m.history[m.historyIndex]
+	m.completionBase = ""
+	m.completionMatches = nil
+	m.completionIndex = -1
+}
+
+func (m *model) nextHistory() {
+	if !strings.HasPrefix(m.commandInput, "/") || len(m.history) == 0 || m.historyIndex == -1 {
+		return
+	}
+	if m.historyIndex < len(m.history)-1 {
+		m.historyIndex++
+		m.commandInput = m.history[m.historyIndex]
+	} else {
+		m.historyIndex = -1
+		m.commandInput = ""
+	}
+	m.completionBase = ""
+	m.completionMatches = nil
+	m.completionIndex = -1
+}
+
+func (m *model) completeSlashCommand() {
+	if !strings.HasPrefix(m.commandInput, "/") {
+		return
+	}
+	m.historyIndex = -1
+
+	prefix := commandPrefix(m.commandInput)
+	if prefix == "" {
+		return
+	}
+
+	activeMatch := false
+	for _, match := range m.completionMatches {
+		if match == prefix {
+			activeMatch = true
+			break
+		}
+	}
+	canContinueCycle := activeMatch && strings.HasSuffix(m.commandInput, " ")
+	if prefix != m.completionBase && !canContinueCycle {
+		m.completionBase = prefix
+		m.completionMatches = matchingSlashCommands(prefix)
+		m.completionIndex = -1
+	}
+	if len(m.completionMatches) == 0 {
+		return
+	}
+
+	m.completionIndex = (m.completionIndex + 1) % len(m.completionMatches)
+	m.commandInput = m.completionMatches[m.completionIndex] + " "
+}
+
+func commandPrefix(input string) string {
+	input = strings.TrimLeft(input, " ")
+	if input == "" || !strings.HasPrefix(input, "/") {
+		return ""
+	}
+	fields := strings.Fields(input)
+	if len(fields) == 0 {
+		return input
+	}
+	return fields[0]
+}
+
+func matchingSlashCommands(prefix string) []string {
+	commands := []string{
+		"/track",
+		"/airport",
+		"/search",
+		"/help",
+		"/quit",
+		"/flight",
+		"/status",
+		"/board",
+		"/route",
+		"/exit",
+	}
+	prefix = strings.ToLower(prefix)
+	matches := make([]string, 0, len(commands))
+	for _, command := range commands {
+		if strings.HasPrefix(command, prefix) {
+			matches = append(matches, command)
+		}
+	}
+	return matches
 }
 
 func (m *model) moveFocus(key string) {
@@ -350,274 +608,4 @@ func fetchQueryCmd(ctx context.Context, cancel context.CancelFunc, svc service.F
 			return resultPayload{requestID: requestID, query: q, err: fmt.Errorf("unsupported query")}
 		}
 	}
-}
-
-func parseSlashCommand(input string) (query, bool, error) {
-	trimmed := strings.TrimSpace(input)
-	if trimmed == "" {
-		return query{}, false, nil
-	}
-	if !strings.HasPrefix(trimmed, "/") {
-		return query{}, false, fmt.Errorf("commands must start with /")
-	}
-
-	fields := strings.Fields(trimmed)
-	command := strings.ToLower(strings.TrimPrefix(fields[0], "/"))
-	args := fields[1:]
-
-	switch command {
-	case "track", "flight", "status":
-		if len(args) != 1 {
-			return query{}, false, fmt.Errorf("usage: /track AA100")
-		}
-		return query{kind: queryFlight, flight: args[0]}, false, nil
-	case "airport", "board":
-		if len(args) < 1 || len(args) > 2 {
-			return query{}, false, fmt.Errorf("usage: /airport JFK departures")
-		}
-		flightType := "departures"
-		if len(args) == 2 {
-			flightType = strings.ToLower(args[1])
-		}
-		if flightType != "departures" && flightType != "arrivals" {
-			return query{}, false, fmt.Errorf("airport board type must be departures or arrivals")
-		}
-		q := query{kind: queryAirport, airport: args[0], flightType: flightType}
-		if !airportCodePattern.MatchString(strings.ToUpper(q.airport)) {
-			return query{}, false, fmt.Errorf("invalid airport code %q: use a 3-letter IATA code", q.airport)
-		}
-		return q, false, nil
-	case "search", "route":
-		if len(args) != 2 {
-			return query{}, false, fmt.Errorf("usage: /search JFK LAX")
-		}
-		q := query{kind: querySearch, from: args[0], to: args[1]}
-		if !airportCodePattern.MatchString(strings.ToUpper(q.from)) {
-			return query{}, false, fmt.Errorf("invalid airport code %q: use a 3-letter IATA code", q.from)
-		}
-		if !airportCodePattern.MatchString(strings.ToUpper(q.to)) {
-			return query{}, false, fmt.Errorf("invalid airport code %q: use a 3-letter IATA code", q.to)
-		}
-		return q, false, nil
-	case "help":
-		return query{}, false, nil
-	case "quit", "exit":
-		return query{}, true, nil
-	default:
-		return query{}, false, fmt.Errorf("unknown command %q", fields[0])
-	}
-}
-
-func loadingMessage(q query) string {
-	switch q.kind {
-	case queryFlight:
-		return "Fetching flight status..."
-	case queryAirport:
-		return "Fetching airport board..."
-	case querySearch:
-		return "Searching route..."
-	default:
-		return "Loading..."
-	}
-}
-
-func (m model) View() string {
-	switch {
-	case m.loading:
-		return m.renderFrame("Loading", "Please wait...")
-	case m.screen == screenHome:
-		return m.renderFrame("", m.viewHome())
-	case m.screen == screenFlightForm:
-		return m.renderFrame("Track Flight", m.viewFlightForm())
-	case m.screen == screenAirportForm:
-		return m.renderFrame("Airport Board", m.viewAirportForm())
-	case m.screen == screenSearchForm:
-		return m.renderFrame("Route Search", m.viewSearchForm())
-	case m.screen == screenResult:
-		return m.renderFrame(m.activeTitle, m.viewResult())
-	default:
-		return m.renderFrame("FlightCLI", "")
-	}
-}
-
-func (m model) renderFrame(title, body string) string {
-	var b strings.Builder
-	if title != "" {
-		b.WriteString(title)
-		b.WriteString("\n")
-		b.WriteString(strings.Repeat("=", max(12, len(title))))
-		b.WriteString("\n\n")
-	}
-	if m.err != "" {
-		b.WriteString("Error: ")
-		b.WriteString(m.err)
-		b.WriteString("\n\n")
-	}
-	b.WriteString(body)
-	if m.statusMessage != "" {
-		b.WriteString("\n\n")
-		b.WriteString(m.statusMessage)
-	}
-	return b.String()
-}
-
-func (m model) viewHome() string {
-	var b strings.Builder
-	b.WriteString("Command:\n")
-	b.WriteString("> ")
-	b.WriteString(m.commandInput)
-	b.WriteString("_\n\n")
-	b.WriteString("Commands:\n")
-	b.WriteString("  /track [flightNumber]\n")
-	b.WriteString("  /airport [airport] [departures]\n")
-	b.WriteString("  /airport [airport] [arrivals]\n")
-	b.WriteString("  /search [airport1] [airport2]\n")
-	b.WriteString("  /quit\n")
-	return b.String()
-}
-
-func (m model) viewFlightForm() string {
-	return m.renderInputs([]field{
-		{label: "Flight number", value: strings.ToUpper(m.inputs[0]), hint: "Example: AA100"},
-	})
-}
-
-func (m model) viewAirportForm() string {
-	flightType := m.inputs[1]
-	if flightType == "" {
-		flightType = "departures"
-	}
-	return m.renderInputs([]field{
-		{label: "Airport code", value: strings.ToUpper(m.inputs[0]), hint: "Example: JFK"},
-		{label: "Board type", value: strings.ToLower(flightType), hint: "departures or arrivals"},
-	})
-}
-
-func (m model) viewSearchForm() string {
-	return m.renderInputs([]field{
-		{label: "From", value: strings.ToUpper(m.inputs[0]), hint: "Example: JFK"},
-		{label: "To", value: strings.ToUpper(m.inputs[1]), hint: "Example: LAX"},
-	})
-}
-
-func (m model) viewResult() string {
-	var b strings.Builder
-	if m.lastCached {
-		b.WriteString("(cached)\n\n")
-	}
-	if m.flight != nil {
-		b.WriteString(formatFlight(m.flight))
-	} else if m.lastQuery.kind == querySearch {
-		b.WriteString(formatSearchResults(m.flights))
-	} else {
-		b.WriteString(formatBoard(m.flights))
-	}
-	if !m.lastUpdated.IsZero() {
-		b.WriteString("\n\nLast updated: ")
-		b.WriteString(m.lastUpdated.Format("15:04:05"))
-	}
-	return b.String()
-}
-
-type field struct {
-	label string
-	value string
-	hint  string
-}
-
-func (m model) renderInputs(fields []field) string {
-	var b strings.Builder
-	for i, f := range fields {
-		cursor := "  "
-		if i == m.focus {
-			cursor = "> "
-		}
-		b.WriteString(cursor)
-		b.WriteString(f.label)
-		b.WriteString(": ")
-		b.WriteString(f.value)
-		if i == m.focus {
-			b.WriteString("_")
-		}
-		b.WriteString("\n")
-		b.WriteString("    ")
-		b.WriteString(f.hint)
-		b.WriteString("\n\n")
-	}
-	b.WriteString("Tab moves between fields. Enter submits. Esc goes back.")
-	return b.String()
-}
-
-func titleForQuery(q query) string {
-	switch q.kind {
-	case queryFlight:
-		return "Flight " + strings.ToUpper(q.flight)
-	case queryAirport:
-		label := capitalize(strings.ToLower(q.flightType))
-		return label + " for " + strings.ToUpper(q.airport)
-	case querySearch:
-		return "Flights from " + strings.ToUpper(q.from) + " to " + strings.ToUpper(q.to)
-	default:
-		return "FlightCLI"
-	}
-}
-
-func formatFlight(flight *models.Flight) string {
-	return formatFlightAt(flight, time.Now())
-}
-
-func formatBoard(flights []models.AirportFlight) string {
-	if len(flights) == 0 {
-		return "No flights found."
-	}
-
-	var lines []string
-	for _, f := range flights {
-		scheduled := ""
-		if !f.ScheduledTime.IsZero() {
-			scheduled = f.ScheduledTime.Format("15:04")
-		}
-		lines = append(lines, fmt.Sprintf("%-8s %-22s %-11s %-10s %s",
-			f.FlightNumber,
-			trimForWidth(f.Airline, 22),
-			f.Origin+"->"+f.Destination,
-			trimForWidth(f.Status, 10),
-			scheduled,
-		))
-	}
-	return strings.Join(lines, "\n")
-}
-
-func formatFlightAt(flight *models.Flight, now time.Time) string {
-	return strings.Join(display.FlightStatusLines(flight, now), "\n")
-}
-
-func formatSearchResults(flights []models.AirportFlight) string {
-	if len(flights) == 0 {
-		return "No flights found."
-	}
-
-	sections := make([]string, 0, len(flights))
-	for _, flight := range flights {
-		sections = append(sections, strings.Join(display.SearchFlightLines(flight), "\n"))
-	}
-	return strings.Join(sections, "\n\n")
-}
-
-func trimForWidth(s string, width int) string {
-	if utf8.RuneCountInString(s) <= width {
-		return s
-	}
-	runes := []rune(s)
-	if width <= 3 {
-		return string(runes[:width])
-	}
-	return string(runes[:width-3]) + "..."
-}
-
-func capitalize(s string) string {
-	if s == "" {
-		return s
-	}
-	return strings.ToUpper(s[:1]) + s[1:]
 }

@@ -19,7 +19,7 @@ func TestTitleForQuery(t *testing.T) {
 	if got := titleForQuery(query{kind: queryAirport, airport: "jfk", flightType: "arrivals"}); got != "Arrivals for JFK" {
 		t.Fatalf("unexpected airport title: %q", got)
 	}
-	if got := titleForQuery(query{kind: querySearch, from: "jfk", to: "lax"}); got != "Flights from JFK to LAX" {
+	if got := titleForQuery(query{kind: querySearch, from: "jfk", to: "lax"}); got != "JFK → LAX" {
 		t.Fatalf("unexpected search title: %q", got)
 	}
 }
@@ -106,30 +106,27 @@ func TestTrimForWidthHandlesMultibyteRunes(t *testing.T) {
 	if got := trimForWidth("München", 7); got != "München" {
 		t.Fatalf("expected full string, got %q", got)
 	}
-	if got := trimForWidth("München", 5); got != "Münc..." {
+	if got := trimForWidth("München", 5); got != "Mü..." {
 		t.Fatalf("expected trimmed at rune boundary, got %q", got)
 	}
 	// CJK: each character is 3 bytes but 1 rune
 	if got := trimForWidth("东京成田", 4); got != "东京成田" {
 		t.Fatalf("expected full CJK string, got %q", got)
 	}
-	if got := trimForWidth("东京成田", 2); got != "东京..." {
+	if got := trimForWidth("东京成田", 2); got != "东京" {
 		t.Fatalf("expected CJK trimmed at rune boundary, got %q", got)
 	}
 }
 
-func TestViewHomeShowsSlashCommandsWithoutTitle(t *testing.T) {
+func TestViewHomeShowsSlashCommands(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
+	m.width = 80
+	m.height = 24
 	output := m.View()
 
-	for _, part := range []string{"Command:", "/track [flightNumber]", "/airport [airport] [departures]", "/search [airport1] [airport2]"} {
+	for _, part := range []string{"/track", "/airport", "/search", "/help", "/quit"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("home view %q missing %q", output, part)
-		}
-	}
-	for _, part := range []string{"FlightCLI\n============", "Choose an action:"} {
-		if strings.Contains(output, part) {
-			t.Fatalf("home view %q should not contain %q", output, part)
 		}
 	}
 }
@@ -255,17 +252,16 @@ func TestHomeSlashCommandClearsAfterSuccessfulResult(t *testing.T) {
 	}
 }
 
-func TestLoadingViewShowsStatusOnce(t *testing.T) {
+func TestLoadingViewShowsStatus(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
+	m.width = 80
+	m.height = 24
 	m.loading = true
 	m.statusMessage = "Fetching flight status..."
 
 	output := m.View()
-	if count := strings.Count(output, "Fetching flight status..."); count != 1 {
-		t.Fatalf("expected loading status once, got %d in %q", count, output)
-	}
-	if !strings.Contains(output, "Please wait...") {
-		t.Fatalf("expected loading view to include wait message, got %q", output)
+	if !strings.Contains(output, "Fetching flight status...") {
+		t.Fatalf("expected loading view to include status message, got %q", output)
 	}
 }
 
@@ -319,4 +315,138 @@ func TestFetchQueryCmdCancelsContextAfterCompletion(t *testing.T) {
 
 func serviceStub() service.FlightService {
 	return service.FlightService{}
+}
+
+func TestSpinnerAlwaysSchedulesNextTick(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.loading = false // Not loading
+
+	updated, cmd := m.Update(spinnerTickMsg{})
+	if cmd == nil {
+		t.Fatalf("expected spinnerTick to always schedule next tick, even when not loading")
+	}
+	// Spinner frame should NOT advance when not loading
+	next := updated.(model)
+	if next.spinnerFrame != 0 {
+		t.Fatalf("expected spinner frame to stay 0 when not loading, got %d", next.spinnerFrame)
+	}
+
+	// Now test that it DOES advance when loading
+	m2 := initialModel(context.Background(), serviceStub())
+	m2.loading = true
+	updated2, cmd2 := m2.Update(spinnerTickMsg{})
+	if cmd2 == nil {
+		t.Fatalf("expected spinnerTick to schedule next tick when loading")
+	}
+	next2 := updated2.(model)
+	if next2.spinnerFrame != 1 {
+		t.Fatalf("expected spinner frame to advance when loading, got %d", next2.spinnerFrame)
+	}
+}
+
+func TestErrorAutoDismissScopedByID(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+
+	// Set first error
+	cmd1 := m.setError("first error")
+	if m.err != "first error" {
+		t.Fatalf("expected first error message, got %q", m.err)
+	}
+	firstID := m.errID
+
+	// Set second error (should get a new errID)
+	cmd2 := m.setError("second error")
+	if m.err != "second error" {
+		t.Fatalf("expected second error message, got %q", m.err)
+	}
+	secondID := m.errID
+	if secondID <= firstID {
+		t.Fatalf("expected errID to increment, got first=%d second=%d", firstID, secondID)
+	}
+
+	// Simulate the first error's clear timer firing — should NOT clear the second error
+	updated, _ := m.Update(clearErrorMsg{id: firstID})
+	next := updated.(model)
+	if next.err != "second error" {
+		t.Fatalf("expected old clearErrorMsg not to wipe newer error, got %q", next.err)
+	}
+	_ = cmd1
+	_ = cmd2
+
+	// Simulate the second error's clear timer — SHOULD clear the error
+	updated2, _ := next.Update(clearErrorMsg{id: secondID})
+	next2 := updated2.(model)
+	if next2.err != "" {
+		t.Fatalf("expected matching clearErrorMsg to clear error, got %q", next2.err)
+	}
+}
+
+func TestHelpScreenView(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.width = 80
+	m.height = 24
+	m.screen = screenHelp
+	m.statusMessage = "any key back"
+
+	output := m.View()
+	for _, part := range []string{"/track", "/airport", "/search", "/help", "Keyboard Shortcuts"} {
+		if !strings.Contains(output, part) {
+			t.Fatalf("expected help view to contain %q, got:\n%s", part, output)
+		}
+	}
+}
+
+func TestTabCompletionCyclesMatches(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.commandInput = "/tr"
+
+	// First tab — should complete to "/track "
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	next := updated.(model)
+	if next.commandInput != "/track " {
+		t.Fatalf("expected tab completion to yield '/track ', got %q", next.commandInput)
+	}
+
+	// Second tab — should cycle to next match (e.g. nothing else starts with /tr after removing /track)
+	// Actually /track is the only /tr prefix command, so it stays
+	updated2, _ := next.Update(tea.KeyMsg{Type: tea.KeyTab})
+	next2 := updated2.(model)
+	// It should cycle back to "/track " since it's the only match
+	if next2.commandInput != "/track " {
+		t.Fatalf("expected tab cycling to stay on '/track ', got %q", next2.commandInput)
+	}
+}
+
+func TestSearchHistoryNavigation(t *testing.T) {
+	m := initialModel(context.Background(), serviceStub())
+	m.commandInput = "/"
+	m.history = []string{"/track AA100", "/airport JFK", "/search JFK LAX"}
+
+	// Up arrow should go to most recent history
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	next := updated.(model)
+	if next.commandInput != "/search JFK LAX" {
+		t.Fatalf("expected up arrow to recall most recent history, got %q", next.commandInput)
+	}
+
+	// Up again — earlier entry
+	updated2, _ := next.Update(tea.KeyMsg{Type: tea.KeyUp})
+	next2 := updated2.(model)
+	if next2.commandInput != "/airport JFK" {
+		t.Fatalf("expected second up arrow to go to earlier history, got %q", next2.commandInput)
+	}
+
+	// Down arrow — go back to more recent
+	updated3, _ := next2.Update(tea.KeyMsg{Type: tea.KeyDown})
+	next3 := updated3.(model)
+	if next3.commandInput != "/search JFK LAX" {
+		t.Fatalf("expected down arrow to go to more recent history, got %q", next3.commandInput)
+	}
+
+	// Down arrow at end — clear input
+	updated4, _ := next3.Update(tea.KeyMsg{Type: tea.KeyDown})
+	next4 := updated4.(model)
+	if next4.commandInput != "" {
+		t.Fatalf("expected down arrow at end of history to clear input, got %q", next4.commandInput)
+	}
 }
