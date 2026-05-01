@@ -118,15 +118,37 @@ func TestNormalizeFlightNumberPreservesIATA(t *testing.T) {
 		{"AAL100", "AA100"},
 		{"DAL502", "DL502"},
 		{"BAW117", "BA117"},
+		{"ACA901", "AC901"},  // Air Canada (ICAO ACA, IATA AC)
+		{"THY777", "TK777"},  // Turkish Airlines (ICAO THY, IATA TK)
+		{"TSC200", "TS200"},  // Air Transat (ICAO TSC, IATA TS)
 		// Leading zeros stripped regardless
 		{"KE038", "KE38"},
 		// 4-char prefix doesn't match any ICAO code — left alone
 		{"TEST1", "TEST1"},
+		// Edge cases
+		{"", ""},           // empty string
+		{"1234", "1234"},   // all digits, no prefix
 	}
 	for _, tt := range tests {
 		got := normalizeFlightNumber(tt.input)
 		if got != tt.want {
 			t.Errorf("normalizeFlightNumber(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestIcaoToIATAKeysAreThreeLetters(t *testing.T) {
+	for icao, iata := range icaoToIATA {
+		if len(icao) != 3 {
+			t.Errorf("icaoToIATA key %q has length %d, want 3", icao, len(icao))
+		}
+		for _, c := range icao {
+			if c < 'A' || c > 'Z' {
+				t.Errorf("icaoToIATA key %q contains non-A-Z rune %q", icao, string(c))
+			}
+		}
+		if len(iata) < 1 || len(iata) > 2 {
+			t.Errorf("icaoToIATA[%q] = %q has length %d, want 1-2", icao, iata, len(iata))
 		}
 	}
 }

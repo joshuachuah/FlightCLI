@@ -371,20 +371,16 @@ var icaoToIATA = map[string]string{
 	"HAL": "HA", // Hawaiian Airlines
 	"SKW": "OO", // SkyWest Airlines
 	"RPA": "YX", // Republic Airways
-	"ENY": "LR", // Envoy Air (formerly American Eagle)
-	"JIA": "EV", // Atlantic Southeast Airlines (ASA dba Delta Connection)
-	"FLG": "YV", // Mesa Airlines
-	"PSA": "OH", // PSA Airlines
+	"ENY": "MQ", // Envoy Air
 	"AAY": "G4", // Allegiant Air
 	"FFT": "F9", // Frontier Airlines
-	"SLM": "NK", // Spirit Airlines
-	"NKS": "NK", // Spirit Airlines (alt ICAO)
-	"SCX": "SX", // Skyxpress
+	"NKS": "NK", // Spirit Airlines
+	"ASH": "YV", // Mesa Airlines
 
 	// Major international airlines
 	"BAW": "BA", // British Airways
-	"AIR": "AC", // Air Canada
-	"CDG": "TS", // Air Transat
+	"ACA": "AC", // Air Canada
+	"TSC": "TS", // Air Transat
 	"AFR": "AF", // Air France
 	"DLH": "LH", // Lufthansa
 	"KLM": "KL", // KLM Royal Dutch Airlines
@@ -405,7 +401,7 @@ var icaoToIATA = map[string]string{
 	"UAE": "EK", // Emirates
 	"ETD": "EY", // Etihad Airways
 	"QTR": "QR", // Qatar Airways
-	"TUR": "TK", // Turkish Airlines
+	"THY": "TK", // Turkish Airlines
 	"AEE": "A3", // Aegean Airlines
 	"RYR": "FR", // Ryanair
 	"EZY": "U2", // easyJet
@@ -415,19 +411,17 @@ var icaoToIATA = map[string]string{
 	"TAP": "TP", // TAP Air Portugal
 	"IBE": "IB", // Iberia
 	"AZA": "AZ", // ITA Airways (was Alitalia)
-	"AZZ": "AZ", // ITA Airways alt
 	"SWR": "LX", // Swiss International Air Lines
 	"AUA": "OS", // Austrian Airlines
 	"FIN": "AY", // Finnair
 	"CSN": "CZ", // China Southern Airlines
 	"CCA": "CA", // Air China
 	"CSZ": "ZH", // Shenzhen Airlines
-	"CFS": "MF", // XiamenAir
-	"MU":  "MU", // China Eastern (IATA=ICAO in this case)
+	"CXA": "MF", // XiamenAir
 	"CES": "MU", // China Eastern Airlines
-	"HDA": "HX", // Hong Kong Airlines (Dragon)
+	"CRK": "HX", // Hong Kong Airlines
 	"AMX": "AM", // Aeromexico
-	"AVT": "AV", // Avianca
+	"AVA": "AV", // Avianca
 	"LAN": "LA", // LATAM Airlines
 	"TAM": "JJ", // LATAM Brasil
 	"SYM": "SY", // Sun Country Airlines
