@@ -114,6 +114,100 @@ func TestGetFlightStatusPrefersScheduledFlightWithLiveTelemetry(t *testing.T) {
 	}
 }
 
+func TestBestFlightPrefersDepartureClosestToNowWhenPriorityTies(t *testing.T) {
+	now := time.Now().UTC()
+	oldDeparture := now.Add(-24 * time.Hour).Format("2006-01-02T15:04:05+00:00")
+	currentDeparture := now.Add(15 * time.Minute).Format("2006-01-02T15:04:05+00:00")
+
+	best := bestFlight([]aviationStackFlight{
+		{
+			FlightStatus: "scheduled",
+			Departure: aviationStackAirport{
+				IATA:      "KUL",
+				Timezone:  "UTC",
+				Scheduled: oldDeparture,
+			},
+			Airline: aviationStackAirline{Name: "Old Air"},
+			Flight:  aviationStackInfo{IATA: "D7504"},
+		},
+		{
+			FlightStatus: "scheduled",
+			Departure: aviationStackAirport{
+				IATA:      "KUL",
+				Timezone:  "UTC",
+				Scheduled: currentDeparture,
+			},
+			Airline: aviationStackAirline{Name: "Current Air"},
+			Flight:  aviationStackInfo{IATA: "D7504"},
+		},
+	})
+
+	if best.Airline.Name != "Current Air" {
+		t.Fatalf("expected closest same-priority flight to be selected, got %q", best.Airline.Name)
+	}
+}
+
+func TestDepartureDistanceFromNowUsesActualThenEstimatedThenScheduled(t *testing.T) {
+	now := time.Now().UTC()
+	actual := now.Add(5 * time.Minute).Format("2006-01-02T15:04:05+00:00")
+	estimated := now.Add(2 * time.Hour).Format("2006-01-02T15:04:05+00:00")
+	scheduled := now.Add(24 * time.Hour).Format("2006-01-02T15:04:05+00:00")
+
+	distance := departureDistanceFromNow(aviationStackFlight{
+		Departure: aviationStackAirport{
+			Timezone:  "UTC",
+			Scheduled: scheduled,
+			Estimated: estimated,
+			Actual:    actual,
+		},
+	})
+
+	if distance > 10*time.Minute {
+		t.Fatalf("expected distance to use actual departure first, got %s", distance)
+	}
+}
+
+func TestDepartureDistanceFromNowTreatsMissingTimeAsFarAway(t *testing.T) {
+	distance := departureDistanceFromNow(aviationStackFlight{})
+
+	if distance != 1<<62 {
+		t.Fatalf("expected missing departure time to be max distance, got %s", distance)
+	}
+}
+
+func TestEffectiveFlightStatusDowngradesActiveWithoutDepartureEvidence(t *testing.T) {
+	status := effectiveFlightStatus(aviationStackFlight{
+		FlightStatus: "active",
+		Departure: aviationStackAirport{
+			Scheduled: "2026-03-13T09:00:00+00:00",
+		},
+	})
+
+	if status != "scheduled" {
+		t.Fatalf("expected active flight without live or actual departure evidence to be scheduled, got %q", status)
+	}
+}
+
+func TestEffectiveFlightStatusTrustsActiveWithLiveOrActualDeparture(t *testing.T) {
+	withLive := effectiveFlightStatus(aviationStackFlight{
+		FlightStatus: "active",
+		Live:         &aviationStackLive{IsGround: true},
+	})
+	if withLive != "active" {
+		t.Fatalf("expected active flight with live data to stay active, got %q", withLive)
+	}
+
+	withActual := effectiveFlightStatus(aviationStackFlight{
+		FlightStatus: "active",
+		Departure: aviationStackAirport{
+			Actual: "2026-03-13T09:05:00+00:00",
+		},
+	})
+	if withActual != "active" {
+		t.Fatalf("expected active flight with actual departure to stay active, got %q", withActual)
+	}
+}
+
 func TestFetchFlightsRespectsContextCancellation(t *testing.T) {
 	provider := &AviationStackProvider{APIKey: "secret-key"}
 	providerHTTPClientMu.Lock()

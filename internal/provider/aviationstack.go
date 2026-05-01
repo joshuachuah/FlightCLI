@@ -229,18 +229,35 @@ func airportFlightFromAviationStack(f aviationStackFlight, scheduled time.Time) 
 
 // bestFlight picks the most relevant flight from multiple results.
 // Prefers active > landed > scheduled, so we don't show a future
-// scheduled flight when the current one is still in the air.
+// scheduled flight when the current one is still in the air. When
+// statuses tie, prefer the departure closest to now.
 func bestFlight(flights []aviationStackFlight) aviationStackFlight {
 	best := flights[0]
 	bestPri := flightPriority(effectiveFlightStatus(best))
+	bestDistance := departureDistanceFromNow(best)
 	for _, f := range flights[1:] {
 		p := flightPriority(effectiveFlightStatus(f))
-		if p < bestPri {
+		distance := departureDistanceFromNow(f)
+		if p < bestPri || (p == bestPri && distance < bestDistance) {
 			best = f
 			bestPri = p
+			bestDistance = distance
 		}
 	}
 	return best
+}
+
+func departureDistanceFromNow(f aviationStackFlight) time.Duration {
+	departure := parseLocalTime(f.Departure.Timezone, f.Departure.Actual, f.Departure.Estimated, f.Departure.Scheduled)
+	if departure.IsZero() {
+		return 1 << 62
+	}
+
+	distance := time.Since(departure)
+	if distance < 0 {
+		return -distance
+	}
+	return distance
 }
 
 func effectiveFlightStatus(f aviationStackFlight) string {
