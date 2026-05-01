@@ -72,27 +72,32 @@ func (m model) View() string {
 }
 
 func (m model) renderStatusBar() string {
+	barPadding := statusBarStyle.GetHorizontalPadding()
+	innerWidth := m.width - barPadding
+	if innerWidth < 1 {
+		innerWidth = 1
+	}
+
 	title := " FlightCLI"
 	if m.activeTitle != "" {
 		title = " " + m.activeTitle
 	}
 
-	titleRendered := statusBarStyle.Render(title)
-
 	rightPart := ""
 	if !m.lastUpdated.IsZero() {
 		rightPart = m.lastUpdated.Format("15:04:05")
 	}
-	rightRendered := statusBarStyle.Render(rightPart)
 
-	// Fill middle with spaces
-	midWidth := m.width - lipgloss.Width(titleRendered) - lipgloss.Width(rightRendered)
-	if midWidth < 0 {
-		midWidth = 0
+	// Compose a single line, then render once so padding is applied only at edges
+	leftLen := lipgloss.Width(title)
+	rightLen := lipgloss.Width(rightPart)
+	midLen := innerWidth - leftLen - rightLen
+	if midLen < 0 {
+		midLen = 0
 	}
-	mid := statusBarStyle.Render(strings.Repeat(" ", midWidth))
+	line := title + strings.Repeat(" ", midLen) + rightPart
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, titleRendered, mid, rightRendered)
+	return statusBarStyle.Render(line)
 }
 
 func (m model) renderContent() string {
@@ -126,7 +131,13 @@ func (m model) renderLoading() string {
 }
 
 func (m model) renderInputBar() string {
-	width := m.width
+	// inputBarStyle has Padding(0,1) → 2 chars horizontal padding.
+	// We must fill the inner width only, not m.width.
+	barPadding := inputBarStyle.GetHorizontalPadding()
+	width := m.width - barPadding
+	if width < 1 {
+		width = 1
+	}
 
 	if m.screen == screenHome {
 		// Command input line
@@ -385,7 +396,6 @@ func (m model) renderForm(title string, fields []field) string {
 		valueStyle := labelStyle
 		if i == m.focus {
 			cursor = keyStyle.Render("▸")
-			valueStyle = valueStyle
 		}
 		b.WriteString(cursor)
 		b.WriteString(" ")

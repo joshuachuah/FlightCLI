@@ -51,7 +51,9 @@ type resultPayload struct {
 	err       error
 }
 
-type clearErrorMsg struct{}
+type clearErrorMsg struct {
+	id int
+}
 
 type model struct {
 	appCtx            context.Context
@@ -67,6 +69,7 @@ type model struct {
 	activeRequest     int
 	requestCancel     context.CancelFunc
 	err               string
+	errID             int
 	lastUpdated       time.Time
 	lastQuery         query
 	lastCached        bool
@@ -130,9 +133,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinnerTickMsg:
 		if m.loading {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
-			return m, spinnerTick()
 		}
-		return m, nil
+		return m, spinnerTick()
 	case resultPayload:
 		if msg.requestID != m.activeRequest {
 			return m, nil
@@ -157,7 +159,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.screen = screenResult
 		return m, nil
 	case clearErrorMsg:
-		m.err = ""
+		if msg.id == m.errID {
+			m.err = ""
+		}
 		return m, nil
 	case tea.KeyMsg:
 		if m.loading {
@@ -243,7 +247,7 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.activeRequest++
 		m.loading = true
 		m.statusMessage = loadingMessage(q)
-		return m, m.startRequest(q)
+		return m, tea.Batch(m.startRequest(q), spinnerTick())
 	default:
 		// Single-key shortcuts when command input is empty
 		if m.commandInput == "" && !msg.Alt {
@@ -309,7 +313,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Fetching flight status..."
-			return m, m.startRequest(q)
+			return m, tea.Batch(m.startRequest(q), spinnerTick())
 		case screenAirportForm:
 			code := strings.TrimSpace(m.inputs[0])
 			flightType := strings.TrimSpace(m.inputs[1])
@@ -327,7 +331,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Fetching airport board..."
-			return m, m.startRequest(q)
+			return m, tea.Batch(m.startRequest(q), spinnerTick())
 		case screenSearchForm:
 			q := query{
 				kind: querySearch,
@@ -347,7 +351,7 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = ""
 			m.statusMessage = "Searching route..."
-			return m, m.startRequest(q)
+			return m, tea.Batch(m.startRequest(q), spinnerTick())
 		}
 	default:
 		if len(msg.Runes) > 0 && !msg.Alt {
@@ -377,14 +381,14 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.err = ""
 		m.scrollOffset = 0
 		m.statusMessage = "Refreshing..."
-		return m, m.startRequest(m.lastQuery)
+		return m, tea.Batch(m.startRequest(m.lastQuery), spinnerTick())
 	case "up":
 		if m.scrollOffset > 0 {
 			m.scrollOffset--
 		}
 	case "down":
 		m.scrollOffset++
-		// Will be clamped in View()
+		m.clampScroll()
 	case "pgup":
 		contentHeight := m.height - statusBarHeight - inputBarHeight
 		if contentHeight < 1 {
@@ -400,9 +404,23 @@ func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			contentHeight = 1
 		}
 		m.scrollOffset += contentHeight
-		// Will be clamped in View()
+		m.clampScroll()
 	}
 	return m, nil
+}
+
+func (m *model) clampScroll() {
+	contentHeight := m.height - statusBarHeight - inputBarHeight
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	maxScroll := len(strings.Split(m.viewResult(), "\n")) - contentHeight
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if m.scrollOffset > maxScroll {
+		m.scrollOffset = maxScroll
+	}
 }
 
 func (m model) updateHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -420,12 +438,10 @@ func (m *model) startRequest(q query) tea.Cmd {
 
 func (m *model) setError(message string) tea.Cmd {
 	m.err = message
-	return clearErrorTick()
-}
-
-func clearErrorTick() tea.Cmd {
+	m.errID++
+	id := m.errID
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
-		return clearErrorMsg{}
+		return clearErrorMsg{id: id}
 	})
 }
 
