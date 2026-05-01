@@ -331,8 +331,9 @@ func flightPriority(status string) int {
 	}
 }
 
-// normalizeFlightNumber strips leading zeros from the numeric part.
-// AviationStack expects "KE38" not "KE038".
+// normalizeFlightNumber strips leading zeros from the numeric part and
+// converts ICAO airline codes to IATA codes. AviationStack uses IATA codes
+// (e.g. "UA2189"), but users often enter ICAO codes (e.g. "UAL2189").
 func normalizeFlightNumber(input string) string {
 	i := 0
 	for i < len(input) && (input[i] >= 'A' && input[i] <= 'Z') {
@@ -341,11 +342,95 @@ func normalizeFlightNumber(input string) string {
 	if i == 0 || i >= len(input) {
 		return input
 	}
+
+	prefix := input[:i]
 	num := strings.TrimLeft(input[i:], "0")
 	if num == "" {
 		num = "0"
 	}
-	return input[:i] + num
+
+	// Convert ICAO airline code to IATA if a mapping exists.
+	if iata, ok := icaoToIATA[prefix]; ok {
+		prefix = iata
+	}
+
+	return prefix + num
+}
+
+// icaoToIATA maps common ICAO airline codes to their IATA equivalents.
+// AviationStack indexes flights by IATA code, so a user searching "UAL2189"
+// must be converted to "UA2189" for the query to match.
+var icaoToIATA = map[string]string{
+	// Major US airlines
+	"AAL": "AA", // American Airlines
+	"UAL": "UA", // United Airlines
+	"DAL": "DL", // Delta Air Lines
+	"SWA": "WN", // Southwest Airlines
+	"JBU": "B6", // JetBlue
+	"ASA": "AS", // Alaska Airlines
+	"HAL": "HA", // Hawaiian Airlines
+	"SKW": "OO", // SkyWest Airlines
+	"RPA": "YX", // Republic Airways
+	"ENY": "LR", // Envoy Air (formerly American Eagle)
+	"JIA": "EV", // Atlantic Southeast Airlines (ASA dba Delta Connection)
+	"FLG": "YV", // Mesa Airlines
+	"PSA": "OH", // PSA Airlines
+	"AAY": "G4", // Allegiant Air
+	"FFT": "F9", // Frontier Airlines
+	"SLM": "NK", // Spirit Airlines
+	"NKS": "NK", // Spirit Airlines (alt ICAO)
+	"SCX": "SX", // Skyxpress
+
+	// Major international airlines
+	"BAW": "BA", // British Airways
+	"AIR": "AC", // Air Canada
+	"CDG": "TS", // Air Transat
+	"AFR": "AF", // Air France
+	"DLH": "LH", // Lufthansa
+	"KLM": "KL", // KLM Royal Dutch Airlines
+	"SAS": "SK", // Scandinavian Airlines
+	"AIC": "AI", // Air India
+	"IGO": "6E", // IndiGo
+	"CPA": "CX", // Cathay Pacific
+	"SIA": "SQ", // Singapore Airlines
+	"ANA": "NH", // All Nippon Airways
+	"JAL": "JL", // Japan Airlines
+	"KAL": "KE", // Korean Air
+	"THA": "TG", // Thai Airways
+	"MAS": "MH", // Malaysia Airlines
+	"GIA": "GA", // Garuda Indonesia
+	"ETH": "ET", // Ethiopian Airlines
+	"QFA": "QF", // Qantas
+	"ANZ": "NZ", // Air New Zealand
+	"UAE": "EK", // Emirates
+	"ETD": "EY", // Etihad Airways
+	"QTR": "QR", // Qatar Airways
+	"TUR": "TK", // Turkish Airlines
+	"AEE": "A3", // Aegean Airlines
+	"RYR": "FR", // Ryanair
+	"EZY": "U2", // easyJet
+	"DLA": "4U", // Germanwings / Eurowings
+	"EWG": "EW", // Eurowings
+	"VIR": "VS", // Virgin Atlantic
+	"TAP": "TP", // TAP Air Portugal
+	"IBE": "IB", // Iberia
+	"AZA": "AZ", // ITA Airways (was Alitalia)
+	"AZZ": "AZ", // ITA Airways alt
+	"SWR": "LX", // Swiss International Air Lines
+	"AUA": "OS", // Austrian Airlines
+	"FIN": "AY", // Finnair
+	"CSN": "CZ", // China Southern Airlines
+	"CCA": "CA", // Air China
+	"CSZ": "ZH", // Shenzhen Airlines
+	"CFS": "MF", // XiamenAir
+	"MU":  "MU", // China Eastern (IATA=ICAO in this case)
+	"CES": "MU", // China Eastern Airlines
+	"HDA": "HX", // Hong Kong Airlines (Dragon)
+	"AMX": "AM", // Aeromexico
+	"AVT": "AV", // Avianca
+	"LAN": "LA", // LATAM Airlines
+	"TAM": "JJ", // LATAM Brasil
+	"SYM": "SY", // Sun Country Airlines
 }
 
 // parseLocalTime re-interprets AviationStack timestamps in the correct timezone.
