@@ -141,19 +141,21 @@ func TestTrimForWidthHandlesMultibyteRunes(t *testing.T) {
 	}
 }
 
-func TestViewHomeShowsErrorWhenPresent(t *testing.T) {
+func TestViewHomeShowsErrorInScrollback(t *testing.T) {
 	m := initialModel(context.Background(), serviceStub())
 	m.width = 80
 	m.height = 24
 	m.err = "something went wrong"
+	m.scrollback = []string{m.renderErrorBlock()}
 
 	output := m.View()
 	if !strings.Contains(output, "something went wrong") {
-		t.Fatalf("expected home view to show error message, got:\n%s", output)
+		t.Fatalf("expected view to show error message in scrollback, got:\n%s", output)
 	}
 
-	// Home view without error should be mostly empty
+	// Home view without error or scrollback should be mostly empty
 	m.err = ""
+	m.scrollback = nil
 	output = m.View()
 	for _, cmd := range []string{"/track", "/airport", "/search"} {
 		if strings.Contains(output, cmd) {
@@ -278,8 +280,11 @@ func TestHomeSlashCommandClearsAfterSuccessfulResult(t *testing.T) {
 	if next.commandInput != "" {
 		t.Fatalf("expected command input to clear after successful result, got %q", next.commandInput)
 	}
-	if next.screen != screenResult {
-		t.Fatalf("expected successful result to show result screen, got %v", next.screen)
+	if next.screen != screenHome {
+		t.Fatalf("expected successful result to return to home screen, got %v", next.screen)
+	}
+	if len(next.scrollback) == 0 {
+		t.Fatalf("expected result to be appended to scrollback")
 	}
 }
 

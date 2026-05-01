@@ -70,6 +70,8 @@ type model struct {
 	requestCancel     context.CancelFunc
 	err               string
 	errID             int
+	scrollback        []string
+	scrollOffset      int
 	lastUpdated       time.Time
 	lastQuery         query
 	lastCached        bool
@@ -78,7 +80,6 @@ type model struct {
 	activeTitle       string
 	statusMessage     string
 	spinnerFrame      int
-	scrollOffset      int
 	history           []string
 	historyIndex      int
 	completionBase    string
@@ -144,6 +145,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			cmd := m.setError(msg.err.Error())
 			m.statusMessage = "Request failed"
+			// Append error to scrollback
+			m.scrollback = append(m.scrollback, m.renderErrorBlock())
+			m.scrollOffset = 0
+			m.screen = screenHome
 			return m, cmd
 		}
 		m.err = ""
@@ -154,9 +159,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flights = msg.board
 		m.lastUpdated = time.Now()
 		m.activeTitle = titleForQuery(msg.query)
-		m.statusMessage = "r refresh · esc back · q quit"
+		m.statusMessage = "Type /help for commands"
+		// Append result to scrollback
+		m.scrollback = append(m.scrollback, m.renderResultBlock())
 		m.scrollOffset = 0
-		m.screen = screenResult
+		m.screen = screenHome
 		return m, nil
 	case clearErrorMsg:
 		if msg.id == m.errID {
@@ -184,12 +191,46 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Scroll handling (works from home and help screens)
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "q":
-			if m.screen == screenResult || (m.screen == screenHome && m.commandInput == "") {
+			if m.screen == screenHome && m.commandInput == "" {
 				return m, tea.Quit
+			}
+		case "up":
+			if m.screen == screenHome && m.commandInput == "" && m.scrollOffset > 0 {
+				m.scrollOffset--
+				return m, nil
+			}
+		case "down":
+			if m.screen == screenHome && m.commandInput == "" {
+				m.scrollOffset++
+				m.clampScroll()
+				return m, nil
+			}
+		case "pgup":
+			if m.screen == screenHome && m.commandInput == "" {
+				contentHeight := m.height - statusBarHeight - inputBarHeight
+				if contentHeight < 1 {
+					contentHeight = 1
+				}
+				m.scrollOffset -= contentHeight
+				if m.scrollOffset < 0 {
+					m.scrollOffset = 0
+				}
+				return m, nil
+			}
+		case "pgdown":
+			if m.screen == screenHome && m.commandInput == "" {
+				contentHeight := m.height - statusBarHeight - inputBarHeight
+				if contentHeight < 1 {
+					contentHeight = 1
+				}
+				m.scrollOffset += contentHeight
+				m.clampScroll()
+				return m, nil
 			}
 		}
 
@@ -198,8 +239,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateHome(msg)
 		case screenFlightForm, screenAirportForm, screenSearchForm:
 			return m.updateForm(msg)
-		case screenResult:
-			return m.updateResult(msg)
 		case screenHelp:
 			return m.updateHelp(msg)
 		}
@@ -362,65 +401,6 @@ func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m, nil
-}
-
-func (m model) updateResult(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.screen = screenHome
-		m.err = ""
-		m.statusMessage = "Type /help for commands"
-		m.scrollOffset = 0
-		return m, nil
-	case "r":
-		if m.lastQuery.kind == queryNone {
-			return m, nil
-		}
-		m.activeRequest++
-		m.loading = true
-		m.err = ""
-		m.scrollOffset = 0
-		m.statusMessage = "Refreshing..."
-		return m, tea.Batch(m.startRequest(m.lastQuery), spinnerTick())
-	case "up":
-		if m.scrollOffset > 0 {
-			m.scrollOffset--
-		}
-		return m, nil
-	case "down":
-		m.scrollOffset++
-		m.clampScroll()
-		return m, nil
-	case "pgup":
-		contentHeight := m.height - statusBarHeight - inputBarHeight
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
-		m.scrollOffset -= contentHeight
-		if m.scrollOffset < 0 {
-			m.scrollOffset = 0
-		}
-		return m, nil
-	case "pgdown":
-		contentHeight := m.height - statusBarHeight - inputBarHeight
-		if contentHeight < 1 {
-			contentHeight = 1
-		}
-		m.scrollOffset += contentHeight
-		m.clampScroll()
-		return m, nil
-	}
-
-	// Any printable key: jump back to home and feed it into the command input
-	if len(msg.Runes) > 0 && !msg.Alt {
-		m.screen = screenHome
-		m.err = ""
-		m.scrollOffset = 0
-		m.statusMessage = "Type /help for commands"
-		m.commandInput = string(msg.Runes)
-		m.resetHomeInputNavigation()
-	}
 	return m, nil
 }
 

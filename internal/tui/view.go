@@ -33,8 +33,21 @@ func (m model) View() string {
 
 	// Render the three panes
 	statusBar := m.renderStatusBar()
-	content := m.renderContent()
 	inputBar := m.renderInputBar()
+
+	// Build scrollback content: old results + current screen
+	var content string
+	if len(m.scrollback) > 0 {
+		content = strings.Join(m.scrollback, "\n\n")
+	}
+	// Append current screen content (forms, help, loading, etc.)
+	currentScreen := m.renderCurrentScreen()
+	if currentScreen != "" {
+		if content != "" {
+			content += "\n\n"
+		}
+		content += currentScreen
+	}
 
 	// Apply scroll offset and clip content to visible area
 	contentLines := strings.Split(content, "\n")
@@ -64,11 +77,11 @@ func (m model) View() string {
 		contentStr += strings.Repeat("\n", linesNeeded)
 	}
 
-	// Stack vertically: status bar, input bar, then content
+	// Stack vertically: status bar, content (scrollback), input bar (pinned at bottom)
 	return lipgloss.JoinVertical(lipgloss.Left,
 		statusBar,
-		inputBar,
 		contentStr,
+		inputBar,
 	)
 }
 
@@ -101,20 +114,18 @@ func (m model) renderStatusBar() string {
 	return statusBarStyle.Render(line)
 }
 
-func (m model) renderContent() string {
+func (m model) renderCurrentScreen() string {
 	switch {
 	case m.loading:
 		return m.renderLoading()
 	case m.screen == screenHome:
-		return m.viewHome()
+		return "" // Home screen is just empty space + input bar
 	case m.screen == screenFlightForm:
 		return m.viewFlightForm()
 	case m.screen == screenAirportForm:
 		return m.viewAirportForm()
 	case m.screen == screenSearchForm:
 		return m.viewSearchForm()
-	case m.screen == screenResult:
-		return m.viewResult()
 	case m.screen == screenHelp:
 		return m.viewHelp()
 	default:
@@ -365,6 +376,18 @@ func (m model) viewResult() string {
 
 	b.WriteString(panelStyle.Render(content))
 	return b.String()
+}
+
+// renderResultBlock renders the current result for storage in the scrollback buffer.
+func (m model) renderResultBlock() string {
+	title := headerStyle.Render("  " + m.activeTitle)
+	body := m.viewResult()
+	return title + "\n" + body
+}
+
+// renderErrorBlock renders the current error for storage in the scrollback buffer.
+func (m model) renderErrorBlock() string {
+	return errorStyle.Render("  ✗ " + sanitize.TerminalString(m.err))
 }
 
 func formatFlight(flight *models.Flight) string {
