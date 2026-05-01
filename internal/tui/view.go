@@ -63,7 +63,6 @@ func (m model) renderStatusBar() string {
 	}
 
 	titleRendered := statusBarStyle.Render(title)
-	width := m.width - lipgloss.Width(titleRendered)
 
 	rightPart := ""
 	if !m.lastUpdated.IsZero() {
