@@ -100,4 +100,29 @@ func TestEmbeddedDatasetOverridesCorruptedRows(t *testing.T) {
 	if got := ByIATA("4C"); got != nil {
 		t.Fatalf("expected corrupted 4C entry to be removed, got %#v", got)
 	}
+
+	// Verify column-shifted CSV entries were corrected.
+	dragonair := ByICAO("HDA")
+	if dragonair == nil {
+		t.Fatal("expected HDA override to be present")
+	}
+	if dragonair.Callsign != "DRAGON" || dragonair.Country != "Hong Kong" {
+		t.Fatalf("expected HDA (Dragonair) to have correct callsign/country, got %#v", dragonair)
+	}
+
+	airS := ByICAO("EQL")
+	if airS == nil {
+		t.Fatal("expected EQL override to be present")
+	}
+	if airS.Country != "Equatorial Guinea" {
+		t.Fatalf("expected EQL country to be Equatorial Guinea, got %q", airS.Country)
+	}
+
+	enkor := ByICAO("ENK")
+	if enkor == nil {
+		t.Fatal("expected ENK entry to be present")
+	}
+	if enkor.Country != "Russia" {
+		t.Fatalf("expected ENK country to be Russia (no stray brackets), got %q", enkor.Country)
+	}
 }
