@@ -85,14 +85,42 @@ func TestGetFlightStatusNormalizesFlightNumber(t *testing.T) {
 	}
 }
 
-func TestGetFlightStatusConvertsICAOToIATA(t *testing.T) {
+func TestGetFlightStatusUsesICAOQueries(t *testing.T) {
 	provider := &AviationStackProvider{APIKey: "secret-key"}
+	requests := 0
 
 	withTestHTTPClient(t, func(req *http.Request) {
-		if got := req.URL.Query().Get("flight_iata"); got != "UA2189" {
-			t.Fatalf("expected IATA flight number UA2189, got %q", got)
+		requests++
+		query := req.URL.Query()
+		switch requests {
+		case 1:
+			if got := query.Get("flight_icao"); got != "UAL2189" {
+				t.Fatalf("expected first query flight_icao=UAL2189, got %q", got)
+			}
+			if got := query.Get("flight_iata"); got != "" {
+				t.Fatalf("expected first query not to use flight_iata, got %q", got)
+			}
+		case 2:
+			if got := query.Get("airline_icao"); got != "UAL" {
+				t.Fatalf("expected second query airline_icao=UAL, got %q", got)
+			}
+			if got := query.Get("flight_number"); got != "2189" {
+				t.Fatalf("expected second query flight_number=2189, got %q", got)
+			}
+		case 3:
+			if got := query.Get("flight_iata"); got != "UA2189" {
+				t.Fatalf("expected third query flight_iata=UA2189, got %q", got)
+			}
+		default:
+			t.Fatalf("unexpected extra request %d", requests)
 		}
 	}, func(w http.ResponseWriter, req *http.Request) {
+		// First two queries (ICAO-based) return empty — simulates free tier
+		if requests <= 2 {
+			fmt.Fprint(w, `{"data":[]}`)
+			return
+		}
+		// Third query (IATA fallback) returns the flight
 		fmt.Fprint(w, `{"data":[{"flight_status":"scheduled","departure":{"iata":"EWR","timezone":"America/New_York","scheduled":"2026-03-13T08:00:00+00:00"},"arrival":{"iata":"SFO","timezone":"America/Los_Angeles","scheduled":"2026-03-13T11:00:00+00:00"},"airline":{"name":"United Airlines"},"flight":{"iata":"UA2189"}}]}`)
 	})
 
@@ -100,8 +128,12 @@ func TestGetFlightStatusConvertsICAOToIATA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetFlightStatus returned error: %v", err)
 	}
+	// FlightNumber should use the IATA code from the API response, not the user's ICAO input
 	if flight.FlightNumber != "UA2189" {
 		t.Fatalf("expected IATA flight number UA2189, got %q", flight.FlightNumber)
+	}
+	if requests != 3 {
+		t.Fatalf("expected three requests, got %d", requests)
 	}
 }
 
@@ -113,21 +145,21 @@ func TestNormalizeFlightNumberPreservesIATA(t *testing.T) {
 		{"UA2189", "UA2189"},
 		{"AA100", "AA100"},
 		{"DL502", "DL502"},
-		// ICAO codes are 3 chars — should be converted
-		{"UAL2189", "UA2189"},
-		{"AAL100", "AA100"},
-		{"DAL502", "DL502"},
-		{"BAW117", "BA117"},
-		{"ACA901", "AC901"},  // Air Canada (ICAO ACA, IATA AC)
-		{"THY777", "TK777"},  // Turkish Airlines (ICAO THY, IATA TK)
-		{"TSC200", "TS200"},  // Air Transat (ICAO TSC, IATA TS)
+		// ICAO codes are preserved; query selection handles them later
+		{"UAL2189", "UAL2189"},
+		{"AAL100", "AAL100"},
+		{"DAL502", "DAL502"},
+		{"BAW117", "BAW117"},
+		{"ACA901", "ACA901"}, // Air Canada (ICAO ACA, IATA AC)
+		{"THY777", "THY777"}, // Turkish Airlines (ICAO THY, IATA TK)
+		{"TSC200", "TSC200"}, // Air Transat (ICAO TSC, IATA TS)
 		// Leading zeros stripped regardless
 		{"KE038", "KE38"},
 		// 4-char prefix doesn't match any ICAO code — left alone
 		{"TEST1", "TEST1"},
 		// Edge cases
-		{"", ""},           // empty string
-		{"1234", "1234"},   // all digits, no prefix
+		{"", ""},         // empty string
+		{"1234", "1234"}, // all digits, no prefix
 	}
 	for _, tt := range tests {
 		got := normalizeFlightNumber(tt.input)
@@ -137,19 +169,45 @@ func TestNormalizeFlightNumberPreservesIATA(t *testing.T) {
 	}
 }
 
-func TestIcaoToIATAKeysAreThreeLetters(t *testing.T) {
-	for icao, iata := range icaoToIATA {
-		if len(icao) != 3 {
-			t.Errorf("icaoToIATA key %q has length %d, want 3", icao, len(icao))
-		}
-		for _, c := range icao {
-			if c < 'A' || c > 'Z' {
-				t.Errorf("icaoToIATA key %q contains non-A-Z rune %q", icao, string(c))
+func TestFlightNumberQueries(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []url.Values
+	}{
+		{
+			name:  "known ICAO code",
+			input: "UAL2189",
+			want: []url.Values{
+				{"flight_icao": []string{"UAL2189"}},
+				{"airline_icao": []string{"UAL"}, "flight_number": []string{"2189"}},
+				{"flight_iata": []string{"UA2189"}},
+			},
+		},
+		{
+			name:  "IATA code",
+			input: "UA2189",
+			want:  []url.Values{{"flight_iata": []string{"UA2189"}}},
+		},
+		{
+			name:  "unknown 3-letter prefix",
+			input: "QQQ123",
+			want:  []url.Values{{"flight_iata": []string{"QQQ123"}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queries := flightNumberQueries(tt.input)
+			if len(queries) != len(tt.want) {
+				t.Fatalf("expected %d queries, got %d", len(tt.want), len(queries))
 			}
-		}
-		if len(iata) < 1 || len(iata) > 2 {
-			t.Errorf("icaoToIATA[%q] = %q has length %d, want 1-2", icao, iata, len(iata))
-		}
+			for i, query := range queries {
+				if got := query.params.Encode(); got != tt.want[i].Encode() {
+					t.Fatalf("query %d params = %q, want %q", i, got, tt.want[i].Encode())
+				}
+			}
+		})
 	}
 }
 

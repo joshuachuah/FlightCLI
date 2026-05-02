@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xjosh/flightcli/internal/airlines"
 	"github.com/xjosh/flightcli/internal/models"
 	"github.com/xjosh/flightcli/internal/sanitize"
 )
@@ -53,6 +54,7 @@ type aviationStackAirport struct {
 type aviationStackAirline struct {
 	Name string `json:"name"`
 	IATA string `json:"iata"`
+	ICAO string `json:"icao"`
 }
 
 type aviationStackInfo struct {
@@ -68,13 +70,23 @@ type aviationStackLive struct {
 }
 
 func (a *AviationStackProvider) GetFlightStatus(ctx context.Context, flightNumber string) (*models.Flight, error) {
-	flightIATA := normalizeFlightNumber(strings.ToUpper(strings.TrimSpace(flightNumber)))
-	data, err := a.fetchFlights(ctx, url.Values{"flight_iata": []string{flightIATA}})
-	if err != nil {
-		return nil, err
+	normalizedFlightNumber := normalizeFlightNumber(strings.ToUpper(strings.TrimSpace(flightNumber)))
+	queries := flightNumberQueries(normalizedFlightNumber)
+	notFoundErr := fmt.Errorf("no flight found for %s", normalizedFlightNumber)
+
+	var data []aviationStackFlight
+	for _, query := range queries {
+		flights, err := a.fetchFlights(ctx, query.params)
+		if err != nil {
+			return nil, err
+		}
+		if len(flights) > 0 {
+			data = flights
+			break
+		}
 	}
 	if len(data) == 0 {
-		return nil, fmt.Errorf("no flight found for %s", flightIATA)
+		return nil, notFoundErr
 	}
 
 	f := bestFlight(data)
@@ -85,8 +97,15 @@ func (a *AviationStackProvider) GetFlightStatus(ctx context.Context, flightNumbe
 		parseLocalTime(f.Arrival.Timezone, f.Arrival.Actual, f.Arrival.Estimated, f.Arrival.Scheduled),
 	)
 
+	// Prefer the IATA flight number from the API response (e.g. "UA2189")
+	// over the user's input (which may be ICAO like "UAL2189").
+	displayNumber := f.Flight.IATA
+	if displayNumber == "" {
+		displayNumber = normalizedFlightNumber
+	}
+
 	flight := &models.Flight{
-		FlightNumber:  flightIATA,
+		FlightNumber:  displayNumber,
 		Airline:       f.Airline.Name,
 		Departure:     f.Departure.IATA,
 		Arrival:       f.Arrival.IATA,
@@ -331,9 +350,6 @@ func flightPriority(status string) int {
 	}
 }
 
-// normalizeFlightNumber strips leading zeros from the numeric part and
-// converts ICAO airline codes to IATA codes. AviationStack uses IATA codes
-// (e.g. "UA2189"), but users often enter ICAO codes (e.g. "UAL2189").
 func normalizeFlightNumber(input string) string {
 	i := 0
 	for i < len(input) && (input[i] >= 'A' && input[i] <= 'Z') {
@@ -349,82 +365,61 @@ func normalizeFlightNumber(input string) string {
 		num = "0"
 	}
 
-	// Convert ICAO airline code to IATA if a mapping exists.
-	if iata, ok := icaoToIATA[prefix]; ok {
-		prefix = iata
-	}
-
 	return prefix + num
 }
 
-// icaoToIATA maps common ICAO airline codes to their IATA equivalents.
-// AviationStack indexes flights by IATA code, so a user searching "UAL2189"
-// must be converted to "UA2189" for the query to match.
-var icaoToIATA = map[string]string{
-	// Major US airlines
-	"AAL": "AA", // American Airlines
-	"UAL": "UA", // United Airlines
-	"DAL": "DL", // Delta Air Lines
-	"SWA": "WN", // Southwest Airlines
-	"JBU": "B6", // JetBlue
-	"ASA": "AS", // Alaska Airlines
-	"HAL": "HA", // Hawaiian Airlines
-	"SKW": "OO", // SkyWest Airlines
-	"RPA": "YX", // Republic Airways
-	"ENY": "MQ", // Envoy Air
-	"AAY": "G4", // Allegiant Air
-	"FFT": "F9", // Frontier Airlines
-	"NKS": "NK", // Spirit Airlines
-	"ASH": "YV", // Mesa Airlines
+type flightQuery struct {
+	desc   string
+	params url.Values
+}
 
-	// Major international airlines
-	"BAW": "BA", // British Airways
-	"ACA": "AC", // Air Canada
-	"TSC": "TS", // Air Transat
-	"AFR": "AF", // Air France
-	"DLH": "LH", // Lufthansa
-	"KLM": "KL", // KLM Royal Dutch Airlines
-	"SAS": "SK", // Scandinavian Airlines
-	"AIC": "AI", // Air India
-	"IGO": "6E", // IndiGo
-	"CPA": "CX", // Cathay Pacific
-	"SIA": "SQ", // Singapore Airlines
-	"ANA": "NH", // All Nippon Airways
-	"JAL": "JL", // Japan Airlines
-	"KAL": "KE", // Korean Air
-	"THA": "TG", // Thai Airways
-	"MAS": "MH", // Malaysia Airlines
-	"GIA": "GA", // Garuda Indonesia
-	"ETH": "ET", // Ethiopian Airlines
-	"QFA": "QF", // Qantas
-	"ANZ": "NZ", // Air New Zealand
-	"UAE": "EK", // Emirates
-	"ETD": "EY", // Etihad Airways
-	"QTR": "QR", // Qatar Airways
-	"THY": "TK", // Turkish Airlines
-	"AEE": "A3", // Aegean Airlines
-	"RYR": "FR", // Ryanair
-	"EZY": "U2", // easyJet
-	"DLA": "4U", // Germanwings / Eurowings
-	"EWG": "EW", // Eurowings
-	"VIR": "VS", // Virgin Atlantic
-	"TAP": "TP", // TAP Air Portugal
-	"IBE": "IB", // Iberia
-	"AZA": "AZ", // ITA Airways (was Alitalia)
-	"SWR": "LX", // Swiss International Air Lines
-	"AUA": "OS", // Austrian Airlines
-	"FIN": "AY", // Finnair
-	"CSN": "CZ", // China Southern Airlines
-	"CCA": "CA", // Air China
-	"CSZ": "ZH", // Shenzhen Airlines
-	"CXA": "MF", // XiamenAir
-	"CES": "MU", // China Eastern Airlines
-	"CRK": "HX", // Hong Kong Airlines
-	"AMX": "AM", // Aeromexico
-	"AVA": "AV", // Avianca
-	"LAN": "LA", // LATAM Airlines
-	"TAM": "JJ", // LATAM Brasil
-	"SYM": "SY", // Sun Country Airlines
+func flightNumberQueries(input string) []flightQuery {
+	input = normalizeFlightNumber(strings.ToUpper(strings.TrimSpace(input)))
+
+	i := 0
+	for i < len(input) && (input[i] >= 'A' && input[i] <= 'Z') {
+		i++
+	}
+	if i == 3 {
+		prefix := input[:i]
+		if airlines.IsICAOCode(prefix) && i < len(input) {
+			num := input[i:]
+			queries := []flightQuery{
+				{
+					desc:   "flight_icao=" + input,
+					params: url.Values{"flight_icao": []string{input}},
+				},
+				{
+					desc: "airline_icao=" + prefix + "&flight_number=" + num,
+					params: url.Values{
+						"airline_icao":  []string{prefix},
+						"flight_number": []string{num},
+					},
+				},
+			}
+
+			// Fall back to the IATA flight number if we know the IATA code.
+			// The AviationStack free tier may not support flight_icao or
+			// airline_icao parameters, so this ensures we can still find
+			// flights like UAL2189 -> UA2189.
+			if iata := airlines.IATACode(prefix); iata != "" {
+				iataFlight := iata + num
+				queries = append(queries, flightQuery{
+					desc:   "flight_iata=" + iataFlight,
+					params: url.Values{"flight_iata": []string{iataFlight}},
+				})
+			}
+
+			return queries
+		}
+	}
+
+	return []flightQuery{
+		{
+			desc:   "flight_iata=" + input,
+			params: url.Values{"flight_iata": []string{input}},
+		},
+	}
 }
 
 // parseLocalTime re-interprets AviationStack timestamps in the correct timezone.
