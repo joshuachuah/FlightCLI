@@ -145,6 +145,9 @@ This continuously refreshes the selected flight until you stop it with `Ctrl+C`.
 - `flightcli` with no subcommand opens the interactive TUI.
 - `--json` is supported for snapshot commands like `status`, `airport`, and `search`.
 - `--json` is not supported with `track`.
+- Flight status lookups support IATA flight numbers (e.g. `AA100`, `KE38`) and
+  ICAO flight numbers (e.g. `UAL2189`). ICAO lookups try the ICAO code first,
+  then fall back to IATA if the airline is in the embedded dataset.
 - Airport inputs must be valid 3-letter IATA codes.
 - Requests are sent over HTTPS.
 - Cached responses may show a `(cached)` indicator.

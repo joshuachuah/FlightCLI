@@ -13,8 +13,11 @@ import (
 var statusCmd = &cobra.Command{
 	Use:   "status [flightNumber]",
 	Short: "Get live flight status",
-	Long:  `Track a live flight by its IATA flight number (e.g. AA100, KE38).`,
-	Args:  cobra.ExactArgs(1),
+	Long: `Track a live flight by its IATA flight number (e.g. AA100, KE38).
+
+ICAO flight numbers are also supported (e.g. UAL2189). The lookup tries the
+ICAO code first, then falls back to IATA if the airline is in the embedded dataset.`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		apiKey, err := requireAPIKey()
 		if err != nil {
