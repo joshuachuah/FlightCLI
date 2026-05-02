@@ -351,6 +351,23 @@ func flightPriority(status string) int {
 }
 
 func normalizeFlightNumber(input string) string {
+	if len(input) >= 3 && input[0] >= '0' && input[0] <= '9' && input[1] >= 'A' && input[1] <= 'Z' {
+		allDigits := true
+		for i := 2; i < len(input); i++ {
+			if input[i] < '0' || input[i] > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			num := strings.TrimLeft(input[2:], "0")
+			if num == "" {
+				num = "0"
+			}
+			return input[:2] + num
+		}
+	}
+
 	i := 0
 	for i < len(input) && (input[i] >= 'A' && input[i] <= 'Z') {
 		i++
@@ -369,7 +386,6 @@ func normalizeFlightNumber(input string) string {
 }
 
 type flightQuery struct {
-	desc   string
 	params url.Values
 }
 
@@ -382,30 +398,20 @@ func flightNumberQueries(input string) []flightQuery {
 	}
 	if i == 3 {
 		prefix := input[:i]
-		if airlines.IsICAOCode(prefix) && i < len(input) {
+		if i < len(input) {
 			num := input[i:]
 			queries := []flightQuery{
 				{
-					desc:   "flight_icao=" + input,
 					params: url.Values{"flight_icao": []string{input}},
-				},
-				{
-					desc: "airline_icao=" + prefix + "&flight_number=" + num,
-					params: url.Values{
-						"airline_icao":  []string{prefix},
-						"flight_number": []string{num},
-					},
 				},
 			}
 
 			// Fall back to the IATA flight number if we know the IATA code.
-			// The AviationStack free tier may not support flight_icao or
-			// airline_icao parameters, so this ensures we can still find
-			// flights like UAL2189 -> UA2189.
+			// The AviationStack free tier may not support flight_icao, so this
+			// ensures we can still find flights like UAL2189 -> UA2189.
 			if iata := airlines.IATACode(prefix); iata != "" {
 				iataFlight := iata + num
 				queries = append(queries, flightQuery{
-					desc:   "flight_iata=" + iataFlight,
 					params: url.Values{"flight_iata": []string{iataFlight}},
 				})
 			}
@@ -416,7 +422,6 @@ func flightNumberQueries(input string) []flightQuery {
 
 	return []flightQuery{
 		{
-			desc:   "flight_iata=" + input,
 			params: url.Values{"flight_iata": []string{input}},
 		},
 	}

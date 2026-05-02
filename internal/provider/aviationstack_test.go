@@ -101,26 +101,19 @@ func TestGetFlightStatusUsesICAOQueries(t *testing.T) {
 				t.Fatalf("expected first query not to use flight_iata, got %q", got)
 			}
 		case 2:
-			if got := query.Get("airline_icao"); got != "UAL" {
-				t.Fatalf("expected second query airline_icao=UAL, got %q", got)
-			}
-			if got := query.Get("flight_number"); got != "2189" {
-				t.Fatalf("expected second query flight_number=2189, got %q", got)
-			}
-		case 3:
 			if got := query.Get("flight_iata"); got != "UA2189" {
-				t.Fatalf("expected third query flight_iata=UA2189, got %q", got)
+				t.Fatalf("expected second query flight_iata=UA2189, got %q", got)
 			}
 		default:
 			t.Fatalf("unexpected extra request %d", requests)
 		}
 	}, func(w http.ResponseWriter, req *http.Request) {
-		// First two queries (ICAO-based) return empty — simulates free tier
-		if requests <= 2 {
+		// First query (ICAO-based) returns empty — simulates free tier
+		if requests == 1 {
 			fmt.Fprint(w, `{"data":[]}`)
 			return
 		}
-		// Third query (IATA fallback) returns the flight
+		// Second query (IATA fallback) returns the flight
 		fmt.Fprint(w, `{"data":[{"flight_status":"scheduled","departure":{"iata":"EWR","timezone":"America/New_York","scheduled":"2026-03-13T08:00:00+00:00"},"arrival":{"iata":"SFO","timezone":"America/Los_Angeles","scheduled":"2026-03-13T11:00:00+00:00"},"airline":{"name":"United Airlines"},"flight":{"iata":"UA2189"}}]}`)
 	})
 
@@ -132,8 +125,37 @@ func TestGetFlightStatusUsesICAOQueries(t *testing.T) {
 	if flight.FlightNumber != "UA2189" {
 		t.Fatalf("expected IATA flight number UA2189, got %q", flight.FlightNumber)
 	}
-	if requests != 3 {
-		t.Fatalf("expected three requests, got %d", requests)
+	if requests != 2 {
+		t.Fatalf("expected two requests, got %d", requests)
+	}
+}
+
+func TestGetFlightStatusICAOFirstQuerySucceeds(t *testing.T) {
+	provider := &AviationStackProvider{APIKey: "secret-key"}
+	requests := 0
+
+	withTestHTTPClient(t, func(req *http.Request) {
+		requests++
+		query := req.URL.Query()
+		if got := query.Get("flight_icao"); got != "UAL2189" {
+			t.Fatalf("expected flight_icao=UAL2189, got %q", got)
+		}
+		if got := query.Get("flight_iata"); got != "" {
+			t.Fatalf("expected no flight_iata on first query, got %q", got)
+		}
+	}, func(w http.ResponseWriter, req *http.Request) {
+		fmt.Fprint(w, `{"data":[{"flight_status":"scheduled","departure":{"iata":"EWR","timezone":"America/New_York","scheduled":"2026-03-13T08:00:00+00:00"},"arrival":{"iata":"SFO","timezone":"America/Los_Angeles","scheduled":"2026-03-13T11:00:00+00:00"},"airline":{"name":"United Airlines"},"flight":{"iata":"UA2189"}}]}`)
+	})
+
+	flight, err := provider.GetFlightStatus(context.Background(), "UAL2189")
+	if err != nil {
+		t.Fatalf("GetFlightStatus returned error: %v", err)
+	}
+	if flight.FlightNumber != "UA2189" {
+		t.Fatalf("expected IATA flight number UA2189, got %q", flight.FlightNumber)
+	}
+	if requests != 1 {
+		t.Fatalf("expected one request, got %d", requests)
 	}
 }
 
@@ -145,6 +167,8 @@ func TestNormalizeFlightNumberPreservesIATA(t *testing.T) {
 		{"UA2189", "UA2189"},
 		{"AA100", "AA100"},
 		{"DL502", "DL502"},
+		{"6E038", "6E38"},
+		{"4U001", "4U1"},
 		// ICAO codes are preserved; query selection handles them later
 		{"UAL2189", "UAL2189"},
 		{"AAL100", "AAL100"},
@@ -180,7 +204,6 @@ func TestFlightNumberQueries(t *testing.T) {
 			input: "UAL2189",
 			want: []url.Values{
 				{"flight_icao": []string{"UAL2189"}},
-				{"airline_icao": []string{"UAL"}, "flight_number": []string{"2189"}},
 				{"flight_iata": []string{"UA2189"}},
 			},
 		},
@@ -192,7 +215,7 @@ func TestFlightNumberQueries(t *testing.T) {
 		{
 			name:  "unknown 3-letter prefix",
 			input: "QQQ123",
-			want:  []url.Values{{"flight_iata": []string{"QQQ123"}}},
+			want:  []url.Values{{"flight_icao": []string{"QQQ123"}}},
 		},
 	}
 

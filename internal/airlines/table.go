@@ -97,7 +97,6 @@ var icaoToAirline = map[string]Airline{
 	"APW": {Name: "Arrow Air", IATA: "JW", ICAO: "APW", Callsign: "BIG A", Country: "United States"},
 	"ARA": {Name: "Arik Air", IATA: "W3", ICAO: "ARA", Callsign: "ARIK AIR", Country: "Nigeria"},
 	"ARD": {Name: "Aerocondor", IATA: "2B", ICAO: "ARD", Callsign: "AEROCONDOR", Country: "Portugal"},
-	"ARE": {Name: "Aires", IATA: "4C", ICAO: "ARE", Callsign: "Aerovias de Integracion Regional", Country: "S.A."},
 	"ARF": {Name: "Aero Flight", IATA: "GV", ICAO: "ARF", Callsign: "Aero Fox", Country: "Germany"},
 	"ARG": {Name: "Aerolineas Argentinas", IATA: "AR", ICAO: "ARG", Callsign: "ARGENTINA", Country: "Argentina"},
 	"ARR": {Name: "Air Armenia", IATA: "QN", ICAO: "ARR", Callsign: "AIR ARMENIA", Country: "Armenia"},
@@ -1185,6 +1184,15 @@ var icaoToAirline = map[string]Airline{
 	"ZZZ": {Name: "Zabaykalskii Airlines", IATA: "ZP", ICAO: "ZZZ", Callsign: "Lakeair", Country: "Russia"},
 }
 
+// overrides amends OpenFlights entries where the current operational
+// IATA code differs from what OpenFlights records or where CSV parsing
+// corrupted metadata.
+var overrides = map[string]Airline{
+	"ASA": {Name: "Alaska Airlines", IATA: "AS", ICAO: "ASA", Callsign: "ALASKA", Country: "United States"},
+	"AVA": {Name: "Avianca", IATA: "AV", ICAO: "AVA", Callsign: "AVIANCA", Country: "Colombia"},
+	"RPA": {Name: "Republic Airways", IATA: "YX", ICAO: "RPA", Callsign: "BRICKYARD", Country: "United States"},
+}
+
 var iataToAirline = map[string]Airline{
 	"04": {Name: "Antrak Air", IATA: "04", ICAO: "ABV", Callsign: "ANTRAK", Country: "Ghana"},
 	"0A": {Name: "Amber Air", IATA: "0A", ICAO: "GNT", Callsign: "GINTA", Country: "Lithuania"},
@@ -1237,7 +1245,6 @@ var iataToAirline = map[string]Airline{
 	"47": {Name: "88", IATA: "47", ICAO: "VVN", Callsign: "", Country: "Cyprus"},
 	"4A": {Name: "Air Kiribati", IATA: "4A", ICAO: "AKL", Callsign: "", Country: "Kiribati"},
 	"4B": {Name: "Boutique Air (Priv)", IATA: "4B", ICAO: "BTQ", Callsign: "", Country: "United States"},
-	"4C": {Name: "Aires", IATA: "4C", ICAO: "ARE", Callsign: "Aerovias de Integracion Regional", Country: "S.A."},
 	"4D": {Name: "Air Sinai", IATA: "4D", ICAO: "ASD", Callsign: "AIR SINAI", Country: "Egypt"},
 	"4F": {Name: "Air City", IATA: "4F", ICAO: "ECE", Callsign: "AIRCITY", Country: "Germany"},
 	"4G": {Name: "Gazpromavia", IATA: "4G", ICAO: "GZP", Callsign: "GAZPROMAVIA", Country: "Russia"},
@@ -1362,10 +1369,10 @@ var iataToAirline = map[string]Airline{
 	"AP": {Name: "Airbus Industrie", IATA: "AP", ICAO: "AIB", Callsign: "AIRBUS INDUSTRIE", Country: "France"},
 	"AQ": {Name: "Aloha Airlines", IATA: "AQ", ICAO: "AAH", Callsign: "ALOHA", Country: "United States"},
 	"AR": {Name: "Aerolineas Argentinas", IATA: "AR", ICAO: "ARG", Callsign: "ARGENTINA", Country: "Argentina"},
-	"AS": {Name: "Alaska Airlines", IATA: "AS", ICAO: "ASA", Callsign: "Inc.", Country: "ALASKA"},
+	"AS": {Name: "Alaska Airlines", IATA: "AS", ICAO: "ASA", Callsign: "ALASKA", Country: "United States"},
 	"AT": {Name: "Royal Air Maroc", IATA: "AT", ICAO: "RAM", Callsign: "ROYALAIR MAROC", Country: "Morocco"},
 	"AU": {Name: "Austral Lineas Aereas", IATA: "AU", ICAO: "AUT", Callsign: "AUSTRAL", Country: "Argentina"},
-	"AV": {Name: "Avianca - Aerovias Nacionales de Colombia", IATA: "AV", ICAO: "AVA", Callsign: "S.A.", Country: "AVIANCA"},
+	"AV": {Name: "Avianca", IATA: "AV", ICAO: "AVA", Callsign: "AVIANCA", Country: "Colombia"},
 	"AW": {Name: "CHC Airways", IATA: "AW", ICAO: "SCH", Callsign: "", Country: "Netherlands"},
 	"AX": {Name: "Trans States Airlines", IATA: "AX", ICAO: "LOF", Callsign: "WATERSKI", Country: "United States"},
 	"AY": {Name: "Finnair", IATA: "AY", ICAO: "FIN", Callsign: "FINNAIR", Country: "Finland"},
@@ -2094,7 +2101,7 @@ var iataToAirline = map[string]Airline{
 	"YT": {Name: "Air Togo", IATA: "YT", ICAO: "TGA", Callsign: "AIR TOGO", Country: "Togo"},
 	"YV": {Name: "Mesa Airlines", IATA: "YV", ICAO: "ASH", Callsign: "AIR SHUTTLE", Country: "United States"},
 	"YW": {Name: "Air Nostrum", IATA: "YW", ICAO: "ANE", Callsign: "AIR NOSTRUM", Country: "Spain"},
-	"YX": {Name: "Midwest Airlines", IATA: "YX", ICAO: "MEP", Callsign: "", Country: "United States"},
+	"YX": {Name: "Republic Airways", IATA: "YX", ICAO: "RPA", Callsign: "BRICKYARD", Country: "United States"},
 	"YY": {Name: "Virginwings", IATA: "YY", ICAO: "VWA", Callsign: "", Country: "Germany"},
 	"YZ": {Name: "LSM AIRLINES", IATA: "YZ", ICAO: "YZZ", Callsign: "Moscow frog", Country: "Russia"},
 	"Z3": {Name: "Avient Aviation", IATA: "Z3", ICAO: "SMJ", Callsign: "AVAVIA", Country: "Zimbabwe"},

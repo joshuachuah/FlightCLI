@@ -61,4 +61,43 @@ func TestEmbeddedDatasetIncludesLegacyCoverage(t *testing.T) {
 	if got := IATACode("SCX"); got != "SY" {
 		t.Fatalf("expected SCX to map to SY, got %q", got)
 	}
+	if got := IATACode("RPA"); got != "YX" {
+		t.Fatalf("expected RPA override to map to YX, got %q", got)
+	}
+	if got := IATACode("DLA"); got != "EN" {
+		t.Fatalf("expected DLA to keep OpenFlights IATA EN, got %q", got)
+	}
+}
+
+func TestEmbeddedDatasetOverridesCorruptedRows(t *testing.T) {
+	alaska := ByICAO("ASA")
+	if alaska == nil {
+		t.Fatal("expected ASA override to be present")
+	}
+	if alaska.Callsign != "ALASKA" || alaska.Country != "United States" {
+		t.Fatalf("expected ASA metadata to be corrected, got %#v", alaska)
+	}
+
+	avianca := ByIATA("AV")
+	if avianca == nil {
+		t.Fatal("expected AV override to be present")
+	}
+	if avianca.Name != "Avianca" || avianca.Callsign != "AVIANCA" || avianca.Country != "Colombia" {
+		t.Fatalf("expected AVA metadata to be corrected, got %#v", avianca)
+	}
+
+	republic := ByIATA("YX")
+	if republic == nil {
+		t.Fatal("expected YX override to be present")
+	}
+	if republic.ICAO != "RPA" || republic.Name != "Republic Airways" {
+		t.Fatalf("expected YX to point to RPA override, got %#v", republic)
+	}
+
+	if got := ByICAO("ARE"); got != nil {
+		t.Fatalf("expected corrupted ARE entry to be removed, got %#v", got)
+	}
+	if got := ByIATA("4C"); got != nil {
+		t.Fatalf("expected corrupted 4C entry to be removed, got %#v", got)
+	}
 }

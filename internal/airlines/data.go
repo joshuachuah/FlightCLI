@@ -21,6 +21,9 @@ type Airline struct {
 // ByICAO returns airline metadata for a 3-letter ICAO code, or nil.
 func ByICAO(icao string) *Airline {
 	icao = strings.ToUpper(strings.TrimSpace(icao))
+	if a, ok := overrides[icao]; ok {
+		return &a
+	}
 	if a, ok := icaoToAirline[icao]; ok {
 		return &a
 	}
@@ -31,6 +34,9 @@ func ByICAO(icao string) *Airline {
 func ByIATA(iata string) *Airline {
 	iata = strings.ToUpper(strings.TrimSpace(iata))
 	if a, ok := iataToAirline[iata]; ok {
+		if override, ok := overrides[a.ICAO]; ok {
+			return &override
+		}
 		return &a
 	}
 	return nil
@@ -57,6 +63,9 @@ func ICAOCode(iata string) string {
 // airline designator present in our dataset.
 func IsICAOCode(prefix string) bool {
 	prefix = strings.ToUpper(strings.TrimSpace(prefix))
+	if _, ok := overrides[prefix]; ok {
+		return true
+	}
 	_, ok := icaoToAirline[prefix]
 	return ok
 }
