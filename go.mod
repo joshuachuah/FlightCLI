@@ -1,4 +1,4 @@
-module github.com/xjosh/flightcli
+module github.com/joshuachuah/flightcli
 
 go 1.25.0
 

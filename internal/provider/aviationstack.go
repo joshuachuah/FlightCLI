@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xjosh/flightcli/internal/airlines"
-	"github.com/xjosh/flightcli/internal/models"
-	"github.com/xjosh/flightcli/internal/sanitize"
+	"github.com/joshuachuah/flightcli/internal/airlines"
+	"github.com/joshuachuah/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/sanitize"
 )
 
 const aviationStackEndpoint = "https://api.aviationstack.com/v1/flights"

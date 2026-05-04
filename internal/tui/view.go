@@ -7,9 +7,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/xjosh/flightcli/internal/display"
-	"github.com/xjosh/flightcli/internal/models"
-	"github.com/xjosh/flightcli/internal/sanitize"
+	"github.com/joshuachuah/flightcli/internal/display"
+	"github.com/joshuachuah/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/sanitize"
 )
 
 // Layout constants

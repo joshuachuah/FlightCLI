@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/xjosh/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/models"
 )
 
 func captureStdout(t *testing.T, fn func()) string {

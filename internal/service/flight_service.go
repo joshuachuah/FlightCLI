@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xjosh/flightcli/internal/cache"
-	"github.com/xjosh/flightcli/internal/models"
-	"github.com/xjosh/flightcli/internal/provider"
+	"github.com/joshuachuah/flightcli/internal/cache"
+	"github.com/joshuachuah/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/provider"
 )
 
 const (

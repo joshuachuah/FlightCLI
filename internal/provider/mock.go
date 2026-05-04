@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/xjosh/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/models"
 )
 
 type MockProvider struct{}
