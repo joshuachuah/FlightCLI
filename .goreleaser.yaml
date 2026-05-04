@@ -1,0 +1,54 @@
+version: 2
+
+project_name: flightcli
+
+builds:
+  - id: flightcli
+    main: .
+    binary: flightcli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - ids:
+      - flightcli
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+  sort: asc
+
+brews:
+  - name: flightcli
+    ids:
+      - flightcli
+    repository:
+      owner: joshuachuah
+      name: homebrew-flightcli
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/joshuachuah/flightcli
+    description: Terminal flight tracker powered by the AviationStack API
+    license: MIT
+    install: |
+      bin.install "flightcli"
+    test: |
+      system "#{bin}/flightcli", "--help"
