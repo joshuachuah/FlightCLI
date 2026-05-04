@@ -45,7 +45,7 @@ brews:
       owner: joshuachuah
       name: homebrew-flightcli
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: https://github.com/joshuachuah/flightcli
+    homepage: https://github.com/joshuachuah/FlightCLI
     description: Terminal flight tracker powered by the AviationStack API
     license: MIT
     install: |
