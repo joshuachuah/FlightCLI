@@ -16,6 +16,22 @@ It supports two ways of working:
 - interactive TUI mode with `flightcli`
 - direct CLI commands like `flightcli status AA100`
 
+## Installation
+
+Install with Go:
+
+```bash
+go install github.com/joshuachuah/flightcli@latest
+```
+
+Prebuilt binaries are available from [GitHub Releases](https://github.com/joshuachuah/flightcli/releases).
+
+Install with Homebrew:
+
+```bash
+brew install joshuachuah/flightcli/flightcli
+```
+
 ## Features
 
 - interactive terminal UI for flight lookup, airport boards, and route search
@@ -43,29 +59,13 @@ Create a `.env` file in the project root:
 AVIATIONSTACK_API_KEY=your_key_here
 ```
 
-Or set it in your shell.
-
-PowerShell:
-
-```powershell
-$env:AVIATIONSTACK_API_KEY="your_key_here"
-```
-
-Bash:
+Or set it in your shell:
 
 ```bash
 export AVIATIONSTACK_API_KEY=your_key_here
 ```
 
-3. Build the app.
-
-PowerShell:
-
-```powershell
-go build -o flightcli.exe .
-```
-
-Bash:
+3. Build the app:
 
 ```bash
 go build -o flightcli .
@@ -83,16 +83,8 @@ go run .
 
 Launch the full-screen terminal UI:
 
-PowerShell:
-
-```powershell
-.\flightcli.exe
-```
-
-Bash:
-
 ```bash
-./flightcli
+flightcli
 ```
 
 Inside the TUI you can:
@@ -158,6 +150,18 @@ This continuously refreshes the selected flight until you stop it with `Ctrl+C`.
 - [Cobra](https://github.com/spf13/cobra)
 - [Bubble Tea](https://github.com/charmbracelet/bubbletea)
 - [AviationStack API](https://aviationstack.com/)
+
+## Data Sources & Licensing
+
+Airline data is sourced from the [OpenFlights airline database](https://github.com/jpatokal/openflights/blob/master/data/airlines.dat).
+
+This dataset is licensed under the Open Database License (ODbL) v1.0.
+
+The embedded dataset in this project is a derivative of the OpenFlights database and is shared under the same ODbL v1.0 terms.
+
+Individual records from the dataset used in FlightCLI are attributed in `NOTICE.txt`.
+
+The FlightCLI application code itself is MIT licensed, but the embedded airline dataset portion remains under ODbL v1.0.
 
 ## License
 
