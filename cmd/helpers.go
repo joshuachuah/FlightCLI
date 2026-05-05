@@ -10,9 +10,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/xjosh/flightcli/internal/cache"
-	"github.com/xjosh/flightcli/internal/provider"
-	"github.com/xjosh/flightcli/internal/service"
+	"github.com/joshuachuah/flightcli/internal/cache"
+	"github.com/joshuachuah/flightcli/internal/provider"
+	"github.com/joshuachuah/flightcli/internal/service"
 )
 
 var airportCodePattern = regexp.MustCompile(`^[A-Z]{3}$`)

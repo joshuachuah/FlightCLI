@@ -12,8 +12,8 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/fatih/color"
-	"github.com/xjosh/flightcli/internal/models"
-	"github.com/xjosh/flightcli/internal/sanitize"
+	"github.com/joshuachuah/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/sanitize"
 )
 
 var (

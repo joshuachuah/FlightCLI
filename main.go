@@ -6,7 +6,7 @@ package main
 
 import (
 	"github.com/joho/godotenv"
-	"github.com/xjosh/flightcli/cmd"
+	"github.com/joshuachuah/flightcli/cmd"
 )
 
 func main() {

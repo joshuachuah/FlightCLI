@@ -8,8 +8,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/xjosh/flightcli/internal/models"
-	"github.com/xjosh/flightcli/internal/service"
+	"github.com/joshuachuah/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/service"
 )
 
 type queryKind int

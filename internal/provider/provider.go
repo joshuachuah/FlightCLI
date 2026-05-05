@@ -3,7 +3,7 @@ package provider
 import (
 	"context"
 
-	"github.com/xjosh/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/models"
 )
 
 type FlightProvider interface {

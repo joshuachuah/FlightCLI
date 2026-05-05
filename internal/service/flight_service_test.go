@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/xjosh/flightcli/internal/cache"
-	"github.com/xjosh/flightcli/internal/models"
+	"github.com/joshuachuah/flightcli/internal/cache"
+	"github.com/joshuachuah/flightcli/internal/models"
 )
 
 type stubProvider struct {

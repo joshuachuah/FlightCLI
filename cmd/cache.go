@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/xjosh/flightcli/internal/cache"
+	"github.com/joshuachuah/flightcli/internal/cache"
 )
 
 var cacheCmd = &cobra.Command{
