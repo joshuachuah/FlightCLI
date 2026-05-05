@@ -35,4 +35,5 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output results as JSON")
+	rootCmd.AddCommand(versionCmd)
 }
