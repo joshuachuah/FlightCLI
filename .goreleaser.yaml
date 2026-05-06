@@ -8,6 +8,8 @@ builds:
     binary: flightcli
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/joshuachuah/flightcli/internal/version.Version={{ .Version }} -X github.com/joshuachuah/flightcli/internal/version.Commit={{ .Commit }} -X github.com/joshuachuah/flightcli/internal/version.Date={{ .Date }}
     goos:
       - linux
       - darwin
