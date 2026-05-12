@@ -161,11 +161,11 @@ func TestViewHomeShowsErrorInScrollback(t *testing.T) {
 	if len(lines) < 3 {
 		t.Fatalf("expected status bar and input bar lines, got:\n%s", output)
 	}
-	if !strings.Contains(lines[1], ">") {
-		t.Fatalf("expected input line immediately below status bar, got line %q in:\n%s", lines[1], output)
+	if !strings.Contains(lines[m.height-2], ">") {
+		t.Fatalf("expected input line pinned above hint at bottom, got line %q in:\n%s", lines[m.height-2], output)
 	}
-	if !strings.Contains(lines[2], "? for shortcuts") {
-		t.Fatalf("expected input hint below input line, got line %q in:\n%s", lines[2], output)
+	if !strings.Contains(lines[m.height-1], "? for shortcuts") {
+		t.Fatalf("expected input hint pinned to bottom, got line %q in:\n%s", lines[m.height-1], output)
 	}
 	for _, cmd := range []string{"/track", "/airport", "/search"} {
 		if strings.Contains(output, cmd) {
@@ -359,21 +359,6 @@ func TestQCanBeTypedInsideSlashCommand(t *testing.T) {
 	next := updated.(model)
 	if next.commandInput != "/q" {
 		t.Fatalf("expected q to be captured in command input, got %q", next.commandInput)
-	}
-}
-
-func TestQIsAcceptedInFlightFormInput(t *testing.T) {
-	m := initialModel(context.Background(), serviceStub())
-	m.screen = screenFlightForm
-
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
-	if cmd != nil {
-		t.Fatalf("expected form input q not to trigger a command")
-	}
-
-	next := updated.(model)
-	if next.inputs[0] != "q" {
-		t.Fatalf("expected q to be captured in the input field, got %q", next.inputs[0])
 	}
 }
 

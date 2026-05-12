@@ -4,8 +4,10 @@ Copyright 2026 Joshua Chuah <jchuah07@gmail.com>
 package cmd
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/joshuachuah/flightcli/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +33,21 @@ func Execute() {
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+func runTUI(cmd *cobra.Command) error {
+	if jsonOutput {
+		return fmt.Errorf("--json is only supported with a command such as status, airport, or search")
+	}
+
+	apiKey, err := requireAPIKey()
+	if err != nil {
+		printAPIKeyError()
+		return err
+	}
+
+	svc := newFlightService(apiKey, true)
+	return tui.Launch(cmd.Context(), svc)
 }
 
 func init() {
