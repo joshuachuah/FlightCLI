@@ -39,10 +39,9 @@ changelog:
   use: git
   sort: asc
 
-brews:
+homebrew_casks:
   - name: flightcli
-    ids:
-      - flightcli
+    binary: flightcli
     repository:
       owner: joshuachuah
       name: homebrew-flightcli
@@ -50,7 +49,3 @@ brews:
     homepage: https://github.com/joshuachuah/FlightCLI
     description: Terminal flight tracker powered by the AviationStack API
     license: MIT
-    install: |
-      bin.install "flightcli"
-    test: |
-      system "#{bin}/flightcli", "--help"
