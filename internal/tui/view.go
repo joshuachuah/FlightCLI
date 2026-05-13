@@ -200,20 +200,6 @@ func renderKeymap(hints []keyHint) string {
 	return " " + strings.Join(parts, sep)
 }
 
-// ── Home Screen ──────────────────────────────────────────────
-
-func (m model) viewHome() string {
-	var b strings.Builder
-
-	// Error line
-	if m.err != "" {
-		b.WriteString(errorStyle.Render("  ✗ " + sanitize.TerminalString(m.err)))
-		b.WriteString("\n\n")
-	}
-
-	return b.String()
-}
-
 // ── Help Screen ─────────────────────────────────────────────
 
 func (m model) viewHelp() string {

@@ -57,7 +57,6 @@ type model struct {
 	screen            screen
 	width             int
 	height            int
-	cursor            int
 	commandInput      string
 	loading           bool
 	activeRequest     int
