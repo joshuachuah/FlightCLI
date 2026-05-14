@@ -26,10 +26,6 @@ type screen int
 
 const (
 	screenHome screen = iota
-	screenFlightForm
-	screenAirportForm
-	screenSearchForm
-	screenResult
 	screenHelp
 )
 
@@ -61,10 +57,7 @@ type model struct {
 	screen            screen
 	width             int
 	height            int
-	cursor            int
-	focus             int
 	commandInput      string
-	inputs            []string
 	loading           bool
 	activeRequest     int
 	requestCancel     context.CancelFunc
@@ -103,7 +96,6 @@ func initialModel(ctx context.Context, svc service.FlightService) model {
 		appCtx:          ctx,
 		service:         svc,
 		screen:          screenHome,
-		inputs:          []string{"", "", ""},
 		statusMessage:   "Type /help for commands",
 		historyIndex:    -1,
 		completionIndex: -1,
@@ -233,8 +225,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.screen {
 		case screenHome:
 			return m.updateHome(msg)
-		case screenFlightForm, screenAirportForm, screenSearchForm:
-			return m.updateForm(msg)
 		case screenHelp:
 			return m.updateHelp(msg)
 		}
@@ -287,27 +277,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Single-key shortcuts when command input is empty
 		if m.commandInput == "" && !msg.Alt {
 			switch msg.String() {
-			case "t":
-				m.screen = screenFlightForm
-				m.inputs = []string{"", "", ""}
-				m.focus = 0
-				m.err = ""
-				m.statusMessage = "tab next · enter submit · esc back"
-				return m, nil
-			case "a":
-				m.screen = screenAirportForm
-				m.inputs = []string{"", "", ""}
-				m.focus = 0
-				m.err = ""
-				m.statusMessage = "tab next · enter submit · esc back"
-				return m, nil
-			case "s":
-				m.screen = screenSearchForm
-				m.inputs = []string{"", "", ""}
-				m.focus = 0
-				m.err = ""
-				m.statusMessage = "tab next · enter submit · esc back"
-				return m, nil
 			case "?":
 				m.screen = screenHelp
 				m.statusMessage = "any key back"
@@ -319,84 +288,6 @@ func (m model) updateHome(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.resetHomeInputNavigation()
 		}
 	}
-	return m, nil
-}
-
-func (m model) updateForm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
-		m.screen = screenHome
-		m.err = ""
-		m.statusMessage = "Type /help for commands"
-		return m, nil
-	case "tab", "shift+tab", "up", "down":
-		m.moveFocus(msg.String())
-		return m, nil
-	case "backspace":
-		if current := m.inputs[m.focus]; current != "" {
-			m.inputs[m.focus] = current[:len(current)-1]
-		}
-		return m, nil
-	case "enter":
-		switch m.screen {
-		case screenFlightForm:
-			q := query{kind: queryFlight, flight: strings.TrimSpace(m.inputs[0])}
-			if q.flight == "" {
-				return m, m.setError("Flight number is required")
-			}
-			m.activeRequest++
-			m.loading = true
-			m.err = ""
-			m.statusMessage = "Fetching flight status..."
-			return m, tea.Batch(m.startRequest(q), spinnerTick())
-		case screenAirportForm:
-			code := strings.TrimSpace(m.inputs[0])
-			flightType := strings.TrimSpace(m.inputs[1])
-			if code == "" {
-				return m, m.setError("Airport code is required")
-			}
-			if !airportCodePattern.MatchString(strings.ToUpper(code)) {
-				return m, m.setError("Invalid airport code: use 3-letter IATA")
-			}
-			if flightType == "" {
-				flightType = "departures"
-			}
-			q := query{kind: queryAirport, airport: code, flightType: flightType}
-			m.activeRequest++
-			m.loading = true
-			m.err = ""
-			m.statusMessage = "Fetching airport board..."
-			return m, tea.Batch(m.startRequest(q), spinnerTick())
-		case screenSearchForm:
-			q := query{
-				kind: querySearch,
-				from: strings.TrimSpace(m.inputs[0]),
-				to:   strings.TrimSpace(m.inputs[1]),
-			}
-			if q.from == "" || q.to == "" {
-				return m, m.setError("Both airport codes are required")
-			}
-			if !airportCodePattern.MatchString(strings.ToUpper(q.from)) {
-				return m, m.setError("Invalid origin: use 3-letter IATA")
-			}
-			if !airportCodePattern.MatchString(strings.ToUpper(q.to)) {
-				return m, m.setError("Invalid destination: use 3-letter IATA")
-			}
-			m.activeRequest++
-			m.loading = true
-			m.err = ""
-			m.statusMessage = "Searching route..."
-			return m, tea.Batch(m.startRequest(q), spinnerTick())
-		}
-	default:
-		if len(msg.Runes) > 0 && !msg.Alt {
-			m.inputs[m.focus] += string(msg.Runes)
-			if m.screen == screenAirportForm && m.focus == 1 {
-				m.inputs[m.focus] = strings.ToLower(m.inputs[m.focus])
-			}
-		}
-	}
-
 	return m, nil
 }
 
@@ -559,30 +450,6 @@ func matchingSlashCommands(prefix string) []string {
 		}
 	}
 	return matches
-}
-
-func (m *model) moveFocus(key string) {
-	max := 0
-	switch m.screen {
-	case screenAirportForm, screenSearchForm:
-		max = 1
-	default:
-		max = 0
-	}
-	switch key {
-	case "up", "shift+tab":
-		if m.focus > 0 {
-			m.focus--
-		} else {
-			m.focus = max
-		}
-	case "down", "tab":
-		if m.focus < max {
-			m.focus++
-		} else {
-			m.focus = 0
-		}
-	}
 }
 
 func fetchQueryCmd(ctx context.Context, cancel context.CancelFunc, svc service.FlightService, requestID int, q query) tea.Cmd {

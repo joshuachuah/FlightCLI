@@ -67,7 +67,7 @@ var (
 			Bold(true).
 			MarginBottom(1)
 
-	// Labels in forms
+	// Labels and secondary text
 	labelStyle = lipgloss.NewStyle().
 			Foreground(colorMuted)
 
@@ -90,11 +90,11 @@ var (
 				Bold(true)
 
 	// Flight status colors by state
-	statusOnTime   = lipgloss.NewStyle().Foreground(colorSuccess)
-	statusDelayed  = lipgloss.NewStyle().Foreground(colorAccent)
+	statusOnTime    = lipgloss.NewStyle().Foreground(colorSuccess)
+	statusDelayed   = lipgloss.NewStyle().Foreground(colorAccent)
 	statusCancelled = lipgloss.NewStyle().Foreground(colorError)
-	statusLanded   = lipgloss.NewStyle().Foreground(colorMuted)
-	statusDefault  = lipgloss.NewStyle().Foreground(colorHighlight)
+	statusLanded    = lipgloss.NewStyle().Foreground(colorMuted)
+	statusDefault   = lipgloss.NewStyle().Foreground(colorHighlight)
 
 	// Bordered panel for results
 	panelStyle = lipgloss.NewStyle().

@@ -57,11 +57,10 @@ func (m model) View() string {
 
 	viewLines := []string{statusBar}
 	viewLines = append(viewLines, visibleLines...)
-	viewLines = append(viewLines, strings.Split(inputBar, "\n")...)
-
-	for len(viewLines) < m.height {
+	for len(viewLines) < statusBarHeight+visibleContentLines {
 		viewLines = append(viewLines, "")
 	}
+	viewLines = append(viewLines, strings.Split(inputBar, "\n")...)
 
 	return strings.Join(viewLines, "\n")
 }
@@ -134,12 +133,6 @@ func (m model) renderCurrentScreen() string {
 		return m.renderLoading()
 	case m.screen == screenHome:
 		return "" // Home screen is just empty space + input bar
-	case m.screen == screenFlightForm:
-		return m.viewFlightForm()
-	case m.screen == screenAirportForm:
-		return m.viewAirportForm()
-	case m.screen == screenSearchForm:
-		return m.viewSearchForm()
 	case m.screen == screenHelp:
 		return m.viewHelp()
 	default:
@@ -207,20 +200,6 @@ func renderKeymap(hints []keyHint) string {
 	return " " + strings.Join(parts, sep)
 }
 
-// ── Home Screen ──────────────────────────────────────────────
-
-func (m model) viewHome() string {
-	var b strings.Builder
-
-	// Error line
-	if m.err != "" {
-		b.WriteString(errorStyle.Render("  ✗ " + sanitize.TerminalString(m.err)))
-		b.WriteString("\n\n")
-	}
-
-	return b.String()
-}
-
 // ── Help Screen ─────────────────────────────────────────────
 
 func (m model) viewHelp() string {
@@ -264,14 +243,11 @@ func (m model) viewHelp() string {
 		key  string
 		desc string
 	}{
-		{"t", "Track a flight (flight form)"},
-		{"a", "Airport board (airport form)"},
-		{"s", "Search routes (search form)"},
 		{"?", "Show this help screen"},
 		{"esc", "Go back / cancel"},
 		{"q", "Quit"},
-		{"enter", "Submit command or form"},
-		{"tab", "Next field / complete command"},
+		{"enter", "Submit command"},
+		{"tab", "Complete command"},
 		{"↑↓", "Scroll results / history"},
 	}
 
@@ -285,77 +261,6 @@ func (m model) viewHelp() string {
 
 	b.WriteString("\n")
 	b.WriteString(labelStyle.Render("  Real-time flight tracking from your terminal"))
-
-	return b.String()
-}
-
-// ── Form Screens ─────────────────────────────────────────────
-
-func (m model) viewFlightForm() string {
-	return m.renderForm("Track Flight", []field{
-		{label: "Flight number", value: strings.ToUpper(m.inputs[0]), hint: "e.g. AA100"},
-	})
-}
-
-func (m model) viewAirportForm() string {
-	flightType := m.inputs[1]
-	if flightType == "" {
-		flightType = "departures"
-	}
-	return m.renderForm("Airport Board", []field{
-		{label: "Airport code", value: strings.ToUpper(m.inputs[0]), hint: "e.g. JFK"},
-		{label: "Board type", value: strings.ToLower(flightType), hint: "departures or arrivals"},
-	})
-}
-
-func (m model) viewSearchForm() string {
-	return m.renderForm("Route Search", []field{
-		{label: "From", value: strings.ToUpper(m.inputs[0]), hint: "e.g. JFK"},
-		{label: "To", value: strings.ToUpper(m.inputs[1]), hint: "e.g. LAX"},
-	})
-}
-
-type field struct {
-	label string
-	value string
-	hint  string
-}
-
-func (m model) renderForm(title string, fields []field) string {
-	var b strings.Builder
-
-	b.WriteString(headerStyle.Render("  " + title))
-	b.WriteString("\n\n")
-
-	if m.err != "" {
-		b.WriteString(errorStyle.Render("  ✗ " + sanitize.TerminalString(m.err)))
-		b.WriteString("\n\n")
-	}
-
-	for i, f := range fields {
-		cursor := "  "
-		valueStyle := labelStyle
-		if i == m.focus {
-			cursor = keyStyle.Render("▸")
-		}
-		b.WriteString(cursor)
-		b.WriteString(" ")
-		b.WriteString(labelStyle.Render(f.label + ":"))
-		b.WriteString(" ")
-
-		displayVal := sanitize.TerminalString(f.value)
-		if i == m.focus {
-			displayVal = valueStyle.Render(displayVal) + inputCursorStyle.Render("▎")
-		} else if displayVal != "" {
-			displayVal = valueStyle.Render(displayVal)
-		}
-		b.WriteString(displayVal)
-		b.WriteString("\n")
-
-		b.WriteString("    ")
-		b.WriteString(hintStyle.Render(f.hint))
-		b.WriteString("\n\n")
-	}
 
 	return b.String()
 }
